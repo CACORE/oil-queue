@@ -1,6 +1,6 @@
 // 油品排隊登記設定（公開網頁，這裡不要放任何密碼或金鑰）
 window.OIL = {
-  LIFF_ID: "請填入LIFF_ID",   // LINE Developers → LINE Login 頻道 → LIFF 分頁
+  LIFF_ID: "2012280492-xIrfgxId",   // LINE Developers → LINE Login 頻道 → LIFF 分頁
   API: "https://exooakgctfkgyixtuyoj.supabase.co/functions/v1/oil-queue",
 };
 window.OIL.LIFF_URL = "https://liff.line.me/" + window.OIL.LIFF_ID;
