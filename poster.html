@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>油品登記海報</title>
+<style>
+@page { size:A4; margin:0; }
+* { box-sizing:border-box; }
+body { margin:0; background:#ddd; font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif; color:#1d2b24; }
+.sheet { width:210mm; min-height:297mm; margin:10mm auto; background:#fff; padding:22mm 18mm; text-align:center; }
+.brand { font-size:16pt; color:#0e3f29; letter-spacing:.2em; }
+h1 { font-size:40pt; margin:8mm 0 4mm; color:#0e3f29; }
+.sub { font-size:18pt; margin:0 0 10mm; }
+#qr { display:flex; justify-content:center; margin:0 auto 8mm; }
+.scan { font-size:20pt; font-weight:700; color:#0e3f29; margin-bottom:10mm; }
+ol { text-align:left; font-size:15pt; line-height:2; margin:0 auto; max-width:150mm; padding-left:10mm; }
+.note { margin-top:10mm; font-size:12pt; color:#5b7466; line-height:1.8; }
+.tip { text-align:center; padding:12px; font-size:14px; }
+@media print { body { background:#fff; } .sheet { margin:0; } .tip { display:none; } }
+</style>
+</head>
+<body>
+<div class="tip">用瀏覽器「列印」→ A4 印出，貼在門市。<button onclick="print()">🖨️ 列印</button></div>
+<div class="sheet">
+  <div class="brand">惠 通 行</div>
+  <h1>🛢️ 油品排隊登記</h1>
+  <p class="sub">沙拉油・耐炸油　依登記順序通知取貨</p>
+  <div id="qr"></div>
+  <div class="scan">📱 用 LINE 掃描 QR Code 登記</div>
+  <ol>
+    <li>掃描後選擇油品（沙拉油／耐炸油擇一），每人限 1 桶</li>
+    <li>登記後可隨時查看自己目前排第幾位</li>
+    <li>到貨時以官方 LINE 通知，附取貨碼</li>
+    <li>收到通知後 2 個營業日內，憑取貨碼至門市取貨</li>
+  </ol>
+  <div class="note">逾期未取視同放棄・取貨後 10 天內無法再次登記・僅限門市自取</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="config.js"></script>
+<script>
+new QRCode(document.getElementById("qr"), { text: window.OIL.LIFF_URL, width: 300, height: 300, correctLevel: QRCode.CorrectLevel.M });
+</script>
+</body>
+</html>

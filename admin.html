@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>油品登記後台</title>
+<style>
+:root { --green:#0e3f29; --line:#dce8e1; --muted:#5b7466; --red:#b3261e; --orange:#8a4b00; --bg:#f4f8f5; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:#1d2b24; font-family:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif; }
+header { background:var(--green); color:#ffe2a8; padding:12px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+header h1 { margin:0; font-size:1.1rem; flex:1; }
+nav { display:flex; gap:6px; }
+nav button { background:none; border:1px solid rgba(255,226,168,.4); color:#ffe2a8; padding:6px 14px; border-radius:6px; font-size:.9rem; cursor:pointer; }
+nav button.on { background:#ffe2a8; color:var(--green); font-weight:700; }
+main { max-width:960px; margin:0 auto; padding:16px; }
+.card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:14px; }
+.card h2 { margin:0 0 12px; font-size:1rem; color:var(--green); }
+input, select { padding:10px; font-size:1rem; border:1px solid #c8dcd0; border-radius:8px; }
+button.main { padding:10px 20px; font-size:1rem; border:0; border-radius:8px; background:var(--green); color:#ffe2a8; font-weight:700; cursor:pointer; }
+button.main:disabled { opacity:.5; }
+button.small { padding:4px 10px; font-size:.82rem; border:1px solid #c8dcd0; background:#fff; border-radius:6px; cursor:pointer; }
+.row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+table { width:100%; border-collapse:collapse; font-size:.9rem; }
+th { background:#dce8e1; color:#3a5a48; text-align:left; padding:8px; white-space:nowrap; }
+td { padding:8px; border-bottom:1px solid #e8f0ec; vertical-align:top; }
+.st { display:inline-block; padding:2px 8px; border-radius:12px; font-size:.8rem; font-weight:700; white-space:nowrap; }
+.st-排隊中 { background:#eef2f7; color:#33507a; }
+.st-已通知 { background:#fff4e0; color:var(--orange); }
+.st-已取貨 { background:#eefaf2; color:#1a7a3a; }
+.st-已逾期, .st-已取消 { background:#f2f2f2; color:#666; }
+.msg { padding:12px; border-radius:8px; margin-top:12px; font-size:.95rem; line-height:1.7; display:none; }
+.msg.ok { background:#eefaf2; color:#1a5a30; display:block; }
+.msg.bad { background:#fdecea; color:var(--red); display:block; }
+.msg.info { background:#f5fbf7; color:#1d2b24; display:block; border:1px solid var(--line); }
+.redeem-box { font-size:1.15rem; line-height:1.9; }
+.redeem-box b { color:var(--green); }
+#reader { width:100%; max-width:360px; margin-top:12px; }
+.stats { display:flex; gap:20px; flex-wrap:wrap; font-size:.95rem; color:var(--muted); margin-bottom:10px; }
+.stats b { color:var(--green); font-size:1.1rem; }
+.warn { color:var(--red); font-weight:700; }
+.hidden { display:none; }
+.scroll { overflow-x:auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🛢️ 油品登記後台</h1>
+  <nav id="nav" class="hidden">
+    <button data-tab="redeem" class="on">取貨兌換</button>
+    <button data-tab="release">到貨通知</button>
+    <button data-tab="list">登記名單</button>
+  </nav>
+</header>
+<main>
+  <!-- 登入 -->
+  <div id="login" class="card">
+    <h2>請輸入後台密碼</h2>
+    <div class="row">
+      <input type="password" id="pw" onkeydown="if(event.key==='Enter')login()">
+      <button class="main" onclick="login()">登入</button>
+    </div>
+    <div id="login-msg" class="msg"></div>
+  </div>
+
+  <!-- 取貨兌換 -->
+  <section id="tab-redeem" class="hidden">
+    <div class="card">
+      <h2>輸入或掃描取貨碼</h2>
+      <div class="row">
+        <input type="text" id="code" placeholder="例如 K7M2QX" style="text-transform:uppercase;letter-spacing:.15em;width:200px"
+          autocomplete="off" onkeydown="if(event.key==='Enter')lookup()">
+        <button class="main" onclick="lookup()">查詢</button>
+        <button class="small" id="scan-btn" onclick="toggleScan()">📷 用相機掃描</button>
+      </div>
+      <div id="reader" class="hidden"></div>
+      <div id="redeem-msg" class="msg"></div>
+    </div>
+  </section>
+
+  <!-- 到貨通知 -->
+  <section id="tab-release" class="hidden">
+    <div class="card">
+      <h2>到貨放量：依登記順序通知</h2>
+      <div class="row">
+        <select id="rel-product">
+          <option value="沙拉油">沙拉油</option>
+          <option value="耐炸油">耐炸油</option>
+        </select>
+        <input type="number" id="rel-qty" min="1" max="200" placeholder="桶數" style="width:110px">
+        <button class="main" id="rel-btn" onclick="release()">通知前幾位</button>
+      </div>
+      <p style="color:var(--muted);font-size:.85rem;margin:10px 0 0">按下後會依登記順序把前 N 位改成「已通知」，並用官方 LINE 傳送取貨碼（每人 1 桶）。</p>
+      <div id="rel-msg" class="msg"></div>
+    </div>
+  </section>
+
+  <!-- 登記名單 -->
+  <section id="tab-list" class="hidden">
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0">登記名單</h2>
+        <button class="small" onclick="loadList()">🔄 重新整理</button>
+      </div>
+      <div id="list-stats" class="stats" style="margin-top:12px"></div>
+      <div class="scroll" id="list-active"></div>
+    </div>
+    <div class="card">
+      <h2>最近完成（已取貨／已逾期／已取消，最近 100 筆）</h2>
+      <div class="scroll" id="list-done"></div>
+    </div>
+  </section>
+</main>
+
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="config.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+const WEEK = "日一二三四五六";
+let pw = "";
+let scanner = null;
+let activeRows = [];
+
+function fmt(iso) { // 10/29（四）14:05
+  if (!iso) return "";
+  const d = new Date(iso);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getMonth() + 1}/${d.getDate()}（${WEEK[d.getDay()]}）${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function msg(id, cls, html) {
+  const el = $(id);
+  el.className = "msg " + cls;
+  el.innerHTML = html;
+}
+
+function api(body) { return oilApi({ ...body, password: pw, liff_url: window.OIL.LIFF_URL }); }
+
+// ── 登入 ──
+async function login(saved) {
+  pw = saved || $("pw").value;
+  try {
+    await api({ action: "admin_login" });
+    try { localStorage.setItem("oil_pw", pw); } catch (e) { /* 無法記住密碼就每次輸入 */ }
+    $("login").classList.add("hidden");
+    $("nav").classList.remove("hidden");
+    showTab("redeem");
+  } catch (e) {
+    try { localStorage.removeItem("oil_pw"); } catch (x) { /* 忽略 */ }
+    if (!saved) msg("login-msg", "bad", esc(e.message));
+  }
+}
+
+document.querySelectorAll("#nav button").forEach((b) => b.onclick = () => showTab(b.dataset.tab));
+
+function showTab(tab) {
+  document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
+  ["redeem", "release", "list"].forEach((t) => $("tab-" + t).classList.toggle("hidden", t !== tab));
+  if (tab !== "redeem") stopScan();
+  if (tab === "redeem") $("code").focus();
+  if (tab === "list") loadList();
+}
+
+// ── 取貨兌換 ──
+async function lookup(codeArg) {
+  const code = (codeArg || $("code").value).trim().toUpperCase();
+  if (!code) return;
+  $("code").value = code;
+  try {
+    const { row } = await api({ action: "admin_lookup", code });
+    const valid = row.status === "已通知";
+    let html = `<div class="redeem-box">
+      取貨碼：<b>${esc(row.code)}</b>　<span class="st st-${esc(row.status)}">${esc(row.status)}</span><br>
+      姓名／店名：<b>${esc(row.name)}</b><br>
+      電話：${esc(row.phone)}<br>
+      品項：<b>${esc(row.product)} 1 桶</b><br>
+      取貨期限：${esc(row.deadline_text)}`;
+    if (row.status === "已取貨") html += `<br><span class="warn">已於 ${esc(fmt(row.redeemed_at))} 兌換過，不可重複出貨</span>`;
+    if (row.status === "已逾期") html += `<br><span class="warn">已超過取貨期限，不可出貨</span>`;
+    if (row.status === "已取消") html += `<br><span class="warn">登記已取消，不可出貨</span>`;
+    html += `</div>`;
+    if (valid) html += `<button class="main" style="margin-top:12px" onclick="redeem('${row.code}')">✅ 確認兌換（出貨 1 桶）</button>`;
+    msg("redeem-msg", valid ? "info" : "bad", html);
+  } catch (e) {
+    msg("redeem-msg", "bad", esc(e.message));
+  }
+}
+
+async function redeem(code) {
+  try {
+    const { row } = await api({ action: "admin_redeem", code });
+    msg("redeem-msg", "ok", `<div class="redeem-box">✅ 兌換完成：<b>${esc(row.name)}</b>｜${esc(row.product)} 1 桶</div>`);
+    $("code").value = "";
+    $("code").focus();
+  } catch (e) {
+    msg("redeem-msg", "bad", esc(e.message));
+  }
+}
+
+function toggleScan() { scanner ? stopScan() : startScan(); }
+
+function startScan() {
+  $("reader").classList.remove("hidden");
+  scanner = new Html5Qrcode("reader");
+  scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 220 }, (text) => {
+    stopScan();
+    lookup(text);
+  }).catch((e) => {
+    msg("redeem-msg", "bad", "無法開啟相機：" + esc(e.message || e));
+    stopScan();
+  });
+  $("scan-btn").textContent = "⏹ 關閉相機";
+}
+
+function stopScan() {
+  if (scanner) {
+    const s = scanner;
+    scanner = null;
+    s.stop().catch(() => {}).finally(() => { try { s.clear(); } catch (e) { /* 忽略 */ } });
+  }
+  $("reader").classList.add("hidden");
+  $("scan-btn").textContent = "📷 用相機掃描";
+}
+
+// ── 到貨通知 ──
+async function release() {
+  const product = $("rel-product").value;
+  const qty = parseInt($("rel-qty").value, 10);
+  if (!(qty >= 1)) return msg("rel-msg", "bad", "請輸入桶數");
+  if (!confirm(`確定要通知「${product}」排隊的前 ${qty} 位嗎？\n會立即用官方 LINE 傳送取貨碼。`)) return;
+  $("rel-btn").disabled = true;
+  try {
+    const { released, short } = await api({ action: "admin_release", product, qty });
+    const failed = released.filter((r) => !r.push_ok);
+    let html = `已通知 <b>${released.length}</b> 位（${esc(product)}）。`;
+    if (short > 0) html += `<br>排隊人數不足，還剩 <b>${short}</b> 桶沒人可通知。`;
+    if (failed.length) {
+      html += `<br><span class="warn">以下 ${failed.length} 位 LINE 沒送出（可能封鎖官方帳號），請改打電話通知：</span><br>` +
+        failed.map((r) => `${esc(r.name)}　${esc(r.phone)}　取貨碼 ${esc(r.code)}`).join("<br>");
+    }
+    msg("rel-msg", failed.length ? "bad" : "ok", html);
+    $("rel-qty").value = "";
+  } catch (e) {
+    msg("rel-msg", "bad", esc(e.message));
+  } finally {
+    $("rel-btn").disabled = false;
+  }
+}
+
+// ── 登記名單 ──
+async function loadList() {
+  try {
+    const { active, done } = await api({ action: "admin_list" });
+    activeRows = active;
+    const cnt = (p, s) => active.filter((r) => r.product === p && r.status === s).length;
+    $("list-stats").innerHTML = ["沙拉油", "耐炸油"].map((p) =>
+      `<span>${p}：排隊中 <b>${cnt(p, "排隊中")}</b>　已通知待取貨 <b>${cnt(p, "已通知")}</b></span>`).join("");
+    const pos = { 沙拉油: 0, 耐炸油: 0 };
+    $("list-active").innerHTML = active.length ? `<table>
+      <thead><tr><th>順位</th><th>品項</th><th>姓名／店名</th><th>電話</th><th>登記時間</th><th>狀態</th><th></th></tr></thead>
+      <tbody>${active.map((r) => {
+        const n = r.status === "排隊中" ? ++pos[r.product] : "";
+        const extra = r.status === "已通知"
+          ? `<br><small>取貨碼 ${esc(r.code)}｜期限 ${esc(fmt(r.deadline).split("）")[0])}）</small>` +
+            (r.push_ok === false ? `<br><small class="warn">LINE 沒送出，請打電話</small>` : "")
+          : "";
+        const actions = (r.status === "已通知" ? `<button class="small" onclick="resend(${r.id})">重發通知</button> ` : "") +
+          `<button class="small" onclick="cancelRow(${r.id})">取消</button>`;
+        return `<tr><td>${n}</td><td>${esc(r.product)}</td><td>${esc(r.name)}<br><small style="color:#888">${esc(r.display_name)}</small></td>
+          <td>${esc(r.phone)}</td><td>${esc(fmt(r.created_at))}</td>
+          <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span>${extra}</td><td style="white-space:nowrap">${actions}</td></tr>`;
+      }).join("")}</tbody></table>` : `<p style="color:var(--muted)">目前沒有人排隊</p>`;
+    $("list-done").innerHTML = done.length ? `<table>
+      <thead><tr><th>品項</th><th>姓名／店名</th><th>電話</th><th>狀態</th><th>取貨／通知時間</th><th>取貨碼</th></tr></thead>
+      <tbody>${done.map((r) => `<tr><td>${esc(r.product)}</td><td>${esc(r.name)}</td><td>${esc(r.phone)}</td>
+        <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span></td>
+        <td>${esc(fmt(r.redeemed_at || r.notified_at || r.created_at))}</td><td>${esc(r.code)}</td></tr>`).join("")}</tbody></table>`
+      : `<p style="color:var(--muted)">尚無資料</p>`;
+  } catch (e) {
+    $("list-active").innerHTML = `<p class="warn">${esc(e.message)}</p>`;
+  }
+}
+
+async function resend(id) {
+  try {
+    const { push_ok } = await api({ action: "admin_resend", id });
+    alert(push_ok ? "已重新傳送 LINE 通知" : "LINE 仍然送不出去，請改打電話通知");
+    loadList();
+  } catch (e) { alert(e.message); }
+}
+
+async function cancelRow(id) {
+  const r = activeRows.find((x) => x.id === id) || {};
+  if (!confirm(`確定取消「${r.name}」的登記？`)) return;
+  try {
+    await api({ action: "admin_cancel", id });
+    loadList();
+  } catch (e) { alert(e.message); }
+}
+
+// 記住的密碼自動登入
+try { const s = localStorage.getItem("oil_pw"); if (s) login(s); } catch (e) { /* 忽略 */ }
+</script>
+</body>
+</html>

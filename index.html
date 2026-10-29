@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>惠通行 油品排隊登記</title>
+<style>
+:root { --green:#0e3f29; --gold:#c9a24a; --bg:#f4f8f5; --line:#dce8e1; --muted:#5b7466; --red:#b3261e; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:#1d2b24; font-family:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif; }
+header { background:var(--green); color:#ffe2a8; padding:18px 16px; text-align:center; }
+header h1 { margin:0; font-size:1.25rem; letter-spacing:.05em; }
+header p { margin:4px 0 0; font-size:.85rem; color:rgba(255,226,168,.75); }
+main { max-width:480px; margin:0 auto; padding:16px; }
+.card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:14px; }
+.card h2 { margin:0 0 12px; font-size:1.05rem; color:var(--green); }
+label { display:block; font-size:.9rem; color:var(--muted); margin:12px 0 6px; }
+input[type=text], input[type=tel] { width:100%; padding:12px; font-size:1rem; border:1px solid #c8dcd0; border-radius:8px; }
+.choices { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.choices label { margin:0; }
+.choices input { display:none; }
+.choices span { display:block; text-align:center; padding:14px 0; border:2px solid #c8dcd0; border-radius:10px; font-size:1.05rem; color:#1d2b24; background:#fff; }
+.choices input:checked + span { border-color:var(--green); background:#eaf4ee; color:var(--green); font-weight:700; }
+button { width:100%; padding:14px; font-size:1.05rem; border:0; border-radius:10px; background:var(--green); color:#ffe2a8; font-weight:700; margin-top:18px; }
+button:disabled { opacity:.5; }
+button.ghost { background:none; color:var(--muted); border:1px solid #c8dcd0; font-weight:400; font-size:.9rem; padding:10px; }
+.big { font-size:3rem; font-weight:800; color:var(--green); text-align:center; line-height:1.1; margin:6px 0; }
+.center { text-align:center; }
+.muted { color:var(--muted); font-size:.88rem; line-height:1.6; }
+.tag { display:inline-block; padding:3px 10px; border-radius:20px; background:#eaf4ee; color:var(--green); font-size:.85rem; font-weight:700; }
+.code { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:2rem; font-weight:800; letter-spacing:.2em; text-align:center; color:var(--green); margin:10px 0; }
+#qr { display:flex; justify-content:center; margin:12px 0; }
+.err { background:#fdecea; color:var(--red); border-radius:8px; padding:10px 12px; font-size:.9rem; margin-top:12px; display:none; }
+ul.rules { margin:0; padding-left:20px; color:var(--muted); font-size:.88rem; line-height:1.8; }
+.hidden { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🛢️ 惠通行 油品排隊登記</h1>
+  <p>沙拉油／耐炸油　依登記順序通知取貨</p>
+</header>
+<main>
+  <div id="loading" class="card center muted">載入中…</div>
+
+  <!-- 登記表單 -->
+  <div id="form-view" class="hidden">
+    <div id="prev-msg" class="card muted hidden"></div>
+    <div class="card">
+      <h2>填寫登記資料</h2>
+      <label>要登記的油品（只能選一種）</label>
+      <div class="choices">
+        <label><input type="radio" name="product" value="沙拉油"><span>沙拉油</span></label>
+        <label><input type="radio" name="product" value="耐炸油"><span>耐炸油</span></label>
+      </div>
+      <label for="name">姓名或店名</label>
+      <input type="text" id="name" maxlength="30" autocomplete="name">
+      <label for="phone">聯絡電話</label>
+      <input type="tel" id="phone" maxlength="12" inputmode="tel" autocomplete="tel">
+      <button id="submit-btn" onclick="submitForm()">送出登記</button>
+      <div id="form-err" class="err"></div>
+    </div>
+    <div class="card">
+      <h2>登記須知</h2>
+      <ul class="rules">
+        <li>每人限購 1 桶，沙拉油、耐炸油只能擇一登記</li>
+        <li>依登記順序，到貨時以本官方 LINE 通知</li>
+        <li>收到通知後 2 個營業日內至門市取貨，逾期視同放棄</li>
+        <li>取貨後 10 天內無法再次登記</li>
+        <li>僅限門市自取，取貨時請出示取貨碼</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 登記狀態 -->
+  <div id="status-view" class="hidden"></div>
+
+  <div id="page-err" class="err"></div>
+</main>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="config.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+let idToken = "";
+
+function show(view) {
+  ["loading", "form-view", "status-view"].forEach((v) => $(v).classList.toggle("hidden", v !== view));
+}
+
+function pageError(msg) {
+  $("loading").classList.add("hidden");
+  $("page-err").textContent = msg;
+  $("page-err").style.display = "block";
+}
+
+async function start() {
+  try {
+    await liff.init({ liffId: window.OIL.LIFF_ID });
+    if (!liff.isLoggedIn()) { liff.login(); return; }
+    idToken = liff.getIDToken();
+    try {
+      const p = await liff.getProfile();
+      if (p && p.displayName) $("name").placeholder = p.displayName;
+    } catch (e) { /* 拿不到名稱不影響登記 */ }
+    render(await oilApi({ action: "me", idToken }));
+  } catch (e) {
+    pageError(e.message || "頁面載入失敗，請關閉後重新掃描 QR Code");
+  }
+}
+
+function render(data) {
+  const r = data.row;
+  if (!r || ["已逾期", "已取消"].includes(r.status) || (r.status === "已取貨" && !r.next_text)) {
+    if (r && r.status !== "已取貨") {
+      $("prev-msg").innerHTML = r.status === "已逾期"
+        ? "您上次的登記已超過取貨期限，已自動取消。如仍需要，請重新登記（會排到最後）。"
+        : "您上次的登記已取消。如仍需要，請重新登記。";
+      $("prev-msg").classList.remove("hidden");
+    }
+    if (r) { $("name").value = r.name || ""; $("phone").value = r.phone || ""; }
+    show("form-view");
+    return;
+  }
+  let html = "";
+  if (r.status === "排隊中") {
+    html = `<div class="card center">
+        <span class="tag">${esc(r.product)}</span>
+        <p class="muted" style="margin:14px 0 0">您目前排在</p>
+        <div class="big">第 ${r.position} 位</div>
+        <p class="muted">到貨輪到您時，會用官方 LINE 通知您<br>請勿封鎖本帳號，以免收不到通知</p>
+      </div>
+      <div class="card muted">
+        登記人：${esc(r.name)}<br>電話：${esc(r.phone)}<br>登記編號：${r.id}
+      </div>`;
+  } else if (r.status === "已通知") {
+    html = `<div class="card center">
+        <span class="tag">${esc(r.product)}　1 桶</span>
+        <p style="margin:14px 0 0;font-weight:700;color:var(--green)">🎉 已到貨，請至門市取貨</p>
+        <div id="qr"></div>
+        <div class="code">${esc(r.code)}</div>
+        <p class="muted">請於 <b>${esc(r.deadline_text)}</b> 營業時間內取貨<br>取貨時出示此畫面，逾期視同放棄</p>
+      </div>
+      <div class="card muted">
+        📍 台北市大同區迪化街一段175號<br>
+        週一至週五 08:00–18:00｜週六 08:30–14:00｜週日公休
+      </div>`;
+  } else if (r.status === "已取貨") {
+    html = `<div class="card center">
+        <span class="tag">${esc(r.product)}</span>
+        <p style="margin:14px 0 6px;font-weight:700;color:var(--green)">✅ 已於 ${esc(r.redeemed_text)} 取貨</p>
+        <p class="muted">取貨後 10 天內無法再次登記<br>${esc(r.next_text)} 起可以重新登記</p>
+      </div>`;
+  }
+  if (["排隊中", "已通知"].includes(r.status)) {
+    html += `<button class="ghost" onclick="cancelReg()">取消登記</button>`;
+  }
+  $("status-view").innerHTML = html;
+  show("status-view");
+  if (r.status === "已通知") new QRCode($("qr"), { text: r.code, width: 180, height: 180 });
+}
+
+async function submitForm() {
+  const product = (document.querySelector("input[name=product]:checked") || {}).value;
+  const name = $("name").value.trim();
+  const phone = $("phone").value.trim();
+  const err = $("form-err");
+  err.style.display = "none";
+  if (!product) return formError("請選擇沙拉油或耐炸油");
+  if (!name) return formError("請填寫姓名或店名");
+  if (phone.replace(/\D/g, "").length < 8) return formError("請填寫正確的電話號碼");
+  if (!confirm(`確認登記「${product}」1 桶？\n每人只能登記一種油品。`)) return;
+  $("submit-btn").disabled = true;
+  try {
+    render(await oilApi({ action: "register", idToken, product, name, phone }));
+    window.scrollTo(0, 0);
+  } catch (e) {
+    formError(e.message);
+  } finally {
+    $("submit-btn").disabled = false;
+  }
+}
+
+function formError(msg) {
+  $("form-err").textContent = msg;
+  $("form-err").style.display = "block";
+}
+
+async function cancelReg() {
+  if (!confirm("確定要取消登記嗎？取消後重新登記會排到最後。")) return;
+  try {
+    render(await oilApi({ action: "cancel", idToken }));
+  } catch (e) {
+    pageError(e.message);
+  }
+}
+
+start();
+</script>
+</body>
+</html>
