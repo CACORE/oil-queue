@@ -67,6 +67,17 @@ td { padding:8px; border-bottom:1px solid #e8f0ec; vertical-align:top; }
   <!-- 取貨兌換 -->
   <section id="tab-redeem" class="hidden">
     <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0">待取貨名單</h2>
+        <button class="small" onclick="loadPending()">🔄 重新整理</button>
+      </div>
+      <p style="color:var(--muted);font-size:.85rem;margin:8px 0 10px">客人出示取貨碼 → 在名單找到他、核對取貨碼一樣 → 按「兌換」</p>
+      <input type="text" id="pend-filter" placeholder="篩選：電話末幾碼、姓名或取貨碼" oninput="renderPending()"
+        autocomplete="off" style="width:100%;max-width:360px">
+      <div id="redeem-done" class="msg"></div>
+      <div class="scroll" id="pending" style="margin-top:12px"></div>
+    </div>
+    <div class="card">
       <h2>輸入或掃描取貨碼</h2>
       <div class="row">
         <input type="text" id="code" placeholder="例如 K7M2QX" style="text-transform:uppercase;letter-spacing:.15em;width:200px"
@@ -159,11 +170,56 @@ function showTab(tab) {
   document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
   ["redeem", "release", "list"].forEach((t) => $("tab-" + t).classList.toggle("hidden", t !== tab));
   if (tab !== "redeem") stopScan();
-  if (tab === "redeem") $("code").focus();
+  if (tab === "redeem") { $("pend-filter").focus(); loadPending(); }
   if (tab === "list") loadList();
 }
 
 // ── 取貨兌換 ──
+let pendingRows = [];
+
+async function loadPending() {
+  try {
+    const { active } = await api({ action: "admin_list" });
+    pendingRows = active.filter((r) => r.status === "已通知");
+    renderPending();
+  } catch (e) {
+    $("pending").innerHTML = `<p class="warn">${esc(e.message)}</p>`;
+  }
+}
+
+function renderPending() {
+  const kw = $("pend-filter").value.trim().toUpperCase();
+  const rows = pendingRows.filter((r) => !kw ||
+    String(r.phone).includes(kw) || String(r.name).toUpperCase().includes(kw) || String(r.code).includes(kw));
+  if (!pendingRows.length) {
+    $("pending").innerHTML = `<p style="color:var(--muted)">目前沒有待取貨的人</p>`;
+    return;
+  }
+  $("pending").innerHTML = `<p style="color:var(--muted);font-size:.85rem;margin:0 0 6px">共 ${pendingRows.length} 位待取貨${kw ? `，符合 ${rows.length} 位` : ""}</p>` +
+    (rows.length ? `<table>
+    <thead><tr><th>姓名／店名</th><th>電話</th><th>品項</th><th>取貨碼</th><th>期限</th><th></th></tr></thead>
+    <tbody>${rows.map((r) => `<tr>
+      <td><b>${esc(r.name)}</b><br><small style="color:#888">${esc(r.display_name)}</small></td>
+      <td>${esc(r.phone)}</td><td>${esc(r.product)} 1 桶</td>
+      <td style="font-family:monospace;font-size:1.1rem;font-weight:700;letter-spacing:.1em">${esc(r.code)}</td>
+      <td style="white-space:nowrap">${esc(fmt(r.deadline).split("）")[0])}）</td>
+      <td><button class="main" style="padding:6px 16px" onclick="redeemRow(${r.id})">兌換</button></td>
+    </tr>`).join("")}</tbody></table>` : `<p style="color:var(--muted)">沒有符合的人</p>`);
+}
+
+async function redeemRow(id) {
+  const r = pendingRows.find((x) => x.id === id);
+  if (!r || !confirm(`確認兌換？\n\n${r.name}｜${r.product} 1 桶\n取貨碼 ${r.code}`)) return;
+  try {
+    const { row } = await api({ action: "admin_redeem", code: r.code });
+    msg("redeem-done", "ok", `✅ 兌換完成：<b>${esc(row.name)}</b>｜${esc(row.product)} 1 桶`);
+    $("pend-filter").value = "";
+  } catch (e) {
+    msg("redeem-done", "bad", esc(e.message));
+  }
+  loadPending();
+}
+
 async function lookup(codeArg) {
   const code = (codeArg || $("code").value).trim().toUpperCase();
   if (!code) return;
@@ -194,6 +250,7 @@ async function redeem(code) {
     msg("redeem-msg", "ok", `<div class="redeem-box">✅ 兌換完成：<b>${esc(row.name)}</b>｜${esc(row.product)} 1 桶</div>`);
     $("code").value = "";
     $("code").focus();
+    loadPending();
   } catch (e) {
     msg("redeem-msg", "bad", esc(e.message));
   }
