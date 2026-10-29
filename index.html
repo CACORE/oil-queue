@@ -99,7 +99,12 @@ function pageError(msg) {
 async function start() {
   try {
     await liff.init({ liffId: window.OIL.LIFF_ID });
-    if (!liff.isLoggedIn()) { liff.login(); return; }
+    if (!liff.isLoggedIn()) {
+      // 用手機相機掃到的會在瀏覽器打開：先引導回 LINE（自動跳轉常被系統擋，要客人自己點才比較會開 LINE）
+      if (!liff.isInClient() && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) { showOpenInLine(); return; }
+      liff.login();
+      return;
+    }
     idToken = liff.getIDToken();
     try {
       const p = await liff.getProfile();
@@ -109,6 +114,20 @@ async function start() {
   } catch (e) {
     pageError(e.message || "頁面載入失敗，請關閉後重新掃描 QR Code");
   }
+}
+
+function showOpenInLine() {
+  $("status-view").innerHTML = `<div class="card center">
+      <h2>請在 LINE 裡開啟</h2>
+      <p class="muted">按下方按鈕會打開 LINE 進行登記</p>
+      <a href="${window.OIL.LIFF_URL}"><button>📱 用 LINE 開啟</button></a>
+    </div>
+    <div class="card muted">
+      沒有跳到 LINE 嗎？請改用 <b>LINE 掃描 QR Code</b>：<br>
+      打開 LINE →「主頁」右上角的掃描圖示 → 掃描門市海報
+    </div>
+    <button class="ghost" onclick="liff.login()">我要直接在瀏覽器登入 LINE</button>`;
+  show("status-view");
 }
 
 function render(data) {
