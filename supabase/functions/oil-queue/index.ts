@@ -2,7 +2,7 @@
 // 客人：LIFF 登記頁帶 LINE idToken 呼叫 register / me / cancel
 // 門市：後台帶密碼呼叫 admin_*（名單、放量通知、查取貨碼、兌換、取消、重發通知）；員工密碼只能兌換、看名單
 // Secrets：OIL_LIFF_ID（LIFF ID，前半段就是 LINE Login 頻道 ID）、OIL_ADMIN_PASSWORD（管理者密碼）、
-//          OIL_STAFF_PASSWORD（員工密碼）、
+//          OIL_STAFF_PASSWORD（員工密碼）、OIL_QUEUE_LIMIT（排隊上限，選填，預設 30）、
 //          LINE_CHANNEL_ACCESS_TOKEN（叫貨官方帳號，line-webhook 已設好，同專案共用）
 // 部署時關閉 JWT 驗證（LIFF 頁面不會帶 Supabase 金鑰，身分改用 LINE idToken／後台密碼驗證）
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -21,6 +21,8 @@ const PICKUP_DAYS = 2;   // 通知後幾個營業日內取貨（週日不算）
 const COOLDOWN_DAYS = 10; // 取貨後幾天內不能再登記
 const NOSHOW_LIMIT = 2;   // 累計逾期未取幾次就暫停登記
 const SUSPEND_DAYS = 30;  // 暫停幾天（從最後一次逾期的期限起算）
+const QUEUE_LIMIT = Number(Deno.env.get("OIL_QUEUE_LIMIT")) || 30; // 兩種油合計排隊上限（Secrets 可調，不用重新部署）
+const FULL_TEXT = "目前登記已額滿，暫停受理。到貨通知後會陸續釋出名額，請過幾天再試。";
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // 去掉 0/O、1/I/L 容易看錯的字
 const WEEK = "日一二三四五六";
 
@@ -129,7 +131,7 @@ async function me(userId: string): Promise<Record<string, unknown>> {
   const { data: rows } = await db.from("oil_queue").select("*").eq("user_id", userId)
     .order("id", { ascending: false }).limit(1);
   const row = rows?.[0];
-  if (!row) return { row: null };
+  if (!row) return { row: null, full: await queueFull() };
   const out: Record<string, unknown> = {
     row: {
       id: row.id, name: row.name, phone: row.phone, product: row.product, status: row.status,
@@ -151,7 +153,15 @@ async function me(userId: string): Promise<Record<string, unknown>> {
     const until = await suspendedUntil(userId);
     if (until) r.suspend_text = suspendText(until);
   }
+  // 這個人可以重新登記時，先告訴登記頁是否已額滿（不用填完才被擋）
+  if (["已逾期", "已取消"].includes(row.status) || (row.status === "已取貨" && !r.next_text)) out.full = await queueFull();
   return out;
+}
+
+async function queueFull(): Promise<boolean> {
+  // 兩種油合計排隊中人數到上限就暫停受理；放量通知後人數下降自動重新開放
+  const { count } = await db.from("oil_queue").select("id", { count: "exact", head: true }).eq("status", "排隊中");
+  return (count ?? 0) >= QUEUE_LIMIT;
 }
 
 async function suspendedUntil(userId: string): Promise<Date | null> {
@@ -187,6 +197,7 @@ async function register(userId: string, lineName: string, b: Record<string, any>
   }
   const until = await suspendedUntil(userId);
   if (until) throw new UserError(suspendText(until));
+  if (await queueFull()) throw new UserError(FULL_TEXT);
   const { error } = await db.from("oil_queue").insert({ user_id: userId, display_name: lineName, name, phone, product });
   if (error) {
     if (error.code === "23505") throw new UserError("您已經登記過了，每人只能登記一種油品");
@@ -215,7 +226,7 @@ async function adminList() {
     .gte("notified_at", new Date(Date.now() - 28 * 86400000).toISOString());
   const released28: Record<string, number> = Object.fromEntries(PRODUCTS.map((p) => [p, 0]));
   for (const x of rel ?? []) released28[x.product] = (released28[x.product] ?? 0) + 1;
-  return { active: active ?? [], done: done ?? [], released28 };
+  return { active: active ?? [], done: done ?? [], released28, limit: QUEUE_LIMIT };
 }
 
 async function adminRelease(b: Record<string, any>) {

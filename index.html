@@ -157,7 +157,11 @@ function render(data, stale) {
       if (r.suspend_text) $("prev-msg").innerHTML = `<b style="color:var(--red)">⛔ ${esc(r.suspend_text)}</b>`;
       $("prev-msg").classList.remove("hidden");
     }
-    $("submit-btn").disabled = !!(r && r.suspend_text);
+    if (data.full && !(r && r.suspend_text)) {
+      $("prev-msg").innerHTML = `<b style="color:var(--red)">⛔ 目前登記已額滿，暫停受理</b><br>到貨通知後會陸續釋出名額，請過幾天再打開此頁面登記。`;
+      $("prev-msg").classList.remove("hidden");
+    }
+    $("submit-btn").disabled = !!((r && r.suspend_text) || data.full);
     if (r) { $("name").value = r.name || ""; $("phone").value = r.phone || ""; }
     show("form-view");
     return;

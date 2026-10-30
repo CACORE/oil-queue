@@ -38,5 +38,6 @@
    - `OIL_LIFF_ID`：LIFF ID
    - `OIL_ADMIN_PASSWORD`：管理者密碼（全部功能）
    - `OIL_STAFF_PASSWORD`：員工密碼（只能取貨兌換、看名單）
+   - `OIL_QUEUE_LIMIT`（選填）：兩種油合計排隊上限，預設 30，改了不用重新部署
    - （`LINE_CHANNEL_ACCESS_TOKEN` 已存在，line-webhook 共用）
 5. `config.js` 填 LIFF ID，push 到 GitHub
