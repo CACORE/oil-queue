@@ -105,6 +105,7 @@ async function pushConfirm(row: Record<string, any>): Promise<boolean> {
     `目前順位：第 ${row.position} 位\n\n` +
     `到貨輪到您時，會再用 LINE 通知您取貨。\n` +
     `👉 隨時查詢目前順位：${LIFF_URL}\n\n` +
+    `※ 品牌無法指定（大成／美食家），依當次到貨品牌出貨\n` +
     `※ 請勿封鎖本帳號，以免收不到到貨通知`;
   return pushText(row.user_id, text, row.id);
 }
@@ -114,6 +115,7 @@ async function pushNotice(row: Record<string, any>): Promise<boolean> {
     `取貨碼：${row.code}\n` +
     `⏰ 取貨期限：通知後 ${PICKUP_DAYS} 個營業日內\n` +
     `請於 ${twDate(row.deadline)} 營業結束前至門市取貨（限購 1 桶），逾期視同放棄。\n` +
+    `※ 品牌無法指定（大成／美食家），依當次到貨品牌出貨\n` +
     `取貨時請出示取貨碼，或打開登記頁的 QR Code。\n` +
     `👉 ${LIFF_URL}\n` +
     `\n📍 台北市大同區迪化街一段175號\n🈺 週一至週五 08:00–18:00｜週六 08:30–14:00`;
