@@ -54,9 +54,9 @@ ul.rules { margin:0; padding-left:20px; color:var(--muted); font-size:.88rem; li
         <label><input type="radio" name="product" value="耐炸油"><span>耐炸油</span></label>
       </div>
       <label for="name">姓名或店名</label>
-      <input type="text" id="name" maxlength="30" autocomplete="name">
+      <input type="text" id="name" maxlength="30" autocomplete="name" placeholder="請輸入姓名或店名">
       <label for="phone">聯絡電話</label>
-      <input type="tel" id="phone" maxlength="12" inputmode="tel" autocomplete="tel">
+      <input type="tel" id="phone" maxlength="12" inputmode="tel" autocomplete="tel" placeholder="請輸入手機或市話">
       <label style="display:flex;gap:8px;align-items:flex-start;margin-top:16px;color:#1d2b24;font-size:.92rem;line-height:1.5;cursor:pointer">
         <input type="checkbox" id="brand-ok" style="width:18px;height:18px;flex:none;margin-top:2px">
         <span>我了解<b>品牌無法指定（大成／美食家），依當次到貨品牌出貨</b>，非常時期有什麼品牌就出什麼品牌</span>
@@ -124,9 +124,6 @@ async function start() {
       return;
     }
     idToken = liff.getIDToken();
-    liff.getProfile().then((p) => {   // 不等它，跟查狀態同時跑
-      if (p && p.displayName) $("name").placeholder = p.displayName;
-    }).catch(() => { /* 拿不到名稱不影響登記 */ });
     update(await oilApi({ action: "me", idToken }));
   } catch (e) {
     pageError(e.message || "頁面載入失敗，請關閉後重新掃描 QR Code");
