@@ -89,7 +89,7 @@ const CACHE_KEY = "oil_me";   // 這支手機上次查到的狀態：再打開�
 
 function cacheGet() { try { return JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); } catch (e) { return null; } }
 function cacheSet(d) { try { localStorage.setItem(CACHE_KEY, JSON.stringify(d)); } catch (e) { /* 存不了就算了 */ } }
-function update(data) { cacheSet(data); render(data); }
+function update(data) { cacheSet({ row: data.row }); render(data); }
 
 function drawQR(code) {   // QR 套件是背景載入，還沒好就等它載完再畫
   if (window.QRCode) new QRCode($("qr"), { text: code, width: 180, height: 180 });
@@ -188,6 +188,10 @@ function render(data, stale) {
     html += `<button class="ghost" onclick="cancelReg()">取消登記</button>`;
   }
   if (stale) html = `<p class="muted center" style="margin:0 0 10px">🔄 更新中…</p>` + html;
+  if (data.confirm_sent === false) html = `<div class="card" style="background:#fdecea;color:var(--red);border-color:#f3c2bd">
+      ⚠️ <b>LINE 確認訊息沒有送出</b><br>請先加入「惠通行」官方 LINE 好友（並確認沒有封鎖），否則到貨時會收不到通知。
+    </div>` + html;
+  else if (data.confirm_sent) html = `<p class="muted center" style="margin:0 0 10px">✅ 已傳送登記確認與查詢連結到您的 LINE</p>` + html;
   $("status-view").innerHTML = html;
   show("status-view");
   if (r.status === "已通知") drawQR(r.code);

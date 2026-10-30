@@ -147,7 +147,7 @@ function msg(id, cls, html) {
   el.innerHTML = html;
 }
 
-function api(body) { return oilApi({ ...body, password: pw, liff_url: window.OIL.LIFF_URL }); }
+function api(body) { return oilApi({ ...body, password: pw }); }
 
 // ── 登入 ──
 async function login(saved) {

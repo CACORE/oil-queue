@@ -9,6 +9,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const LIFF_ID = Deno.env.get("OIL_LIFF_ID") ?? "";
 const LOGIN_CHANNEL = LIFF_ID.split("-")[0];
+const LIFF_URL = `https://liff.line.me/${LIFF_ID}`;
 const ADMIN_PW = Deno.env.get("OIL_ADMIN_PASSWORD") ?? "";
 const LINE_TOKEN = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN") ?? "";
 
@@ -79,29 +80,44 @@ function newCode(): string {
   return Array.from(a, (b) => CODE_CHARS[b % CODE_CHARS.length]).join("");
 }
 
-async function pushNotice(row: Record<string, any>, liffUrl: string): Promise<boolean> {
-  const text = `【惠通行】${row.name} 您好，您登記的「${row.product}」已到貨🎉\n\n` +
-    `取貨碼：${row.code}\n` +
-    `請於 ${twDate(row.deadline)} 營業時間內至門市取貨（限購 1 桶），逾期視同放棄。\n` +
-    `取貨時請出示取貨碼，或打開登記頁的 QR Code。\n` +
-    (liffUrl ? `👉 ${liffUrl}\n` : "") +
-    `\n📍 台北市大同區迪化街一段175號\n🈺 週一至週五 08:00–18:00｜週六 08:30–14:00`;
+async function pushText(userId: string, text: string, tag: unknown): Promise<boolean> {
   try {
     const r = await fetch("https://api.line.me/v2/bot/message/push", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${LINE_TOKEN}` },
-      body: JSON.stringify({ to: row.user_id, messages: [{ type: "text", text }] }),
+      body: JSON.stringify({ to: userId, messages: [{ type: "text", text }] }),
     });
-    if (!r.ok) console.error("LINE 推播失敗", row.id, r.status, await r.text());
+    if (!r.ok) console.error("LINE 推播失敗", tag, r.status, await r.text());
     return r.ok;
   } catch (e) {
-    console.error("LINE 推播失敗", row.id, e);
+    console.error("LINE 推播失敗", tag, e);
     return false;
   }
 }
 
+async function pushConfirm(row: Record<string, any>): Promise<boolean> {
+  // 登記確認：查詢連結留在客人的聊天室，忘了網址也查得到
+  const text = `【惠通行】${row.name} 您好，已收到您的油品排隊登記✅\n\n` +
+    `品項：${row.product} 1 桶\n` +
+    `目前順位：第 ${row.position} 位\n\n` +
+    `到貨輪到您時，會再用 LINE 通知您取貨。\n` +
+    `👉 隨時查詢目前順位：${LIFF_URL}\n\n` +
+    `※ 請勿封鎖本帳號，以免收不到到貨通知`;
+  return pushText(row.user_id, text, row.id);
+}
+
+async function pushNotice(row: Record<string, any>): Promise<boolean> {
+  const text = `【惠通行】${row.name} 您好，您登記的「${row.product}」已到貨🎉\n\n` +
+    `取貨碼：${row.code}\n` +
+    `請於 ${twDate(row.deadline)} 營業時間內至門市取貨（限購 1 桶），逾期視同放棄。\n` +
+    `取貨時請出示取貨碼，或打開登記頁的 QR Code。\n` +
+    `👉 ${LIFF_URL}\n` +
+    `\n📍 台北市大同區迪化街一段175號\n🈺 週一至週五 08:00–18:00｜週六 08:30–14:00`;
+  return pushText(row.user_id, text, row.id);
+}
+
 // ── 客人 ──────────────────────────────────────────
-async function me(userId: string) {
+async function me(userId: string): Promise<Record<string, unknown>> {
   const { data: rows } = await db.from("oil_queue").select("*").eq("user_id", userId)
     .order("id", { ascending: false }).limit(1);
   const row = rows?.[0];
@@ -149,7 +165,10 @@ async function register(userId: string, lineName: string, b: Record<string, any>
     if (error.code === "23505") throw new UserError("您已經登記過了，每人只能登記一種油品");
     throw error;
   }
-  return me(userId);
+  const out = await me(userId);
+  // 送不出去（沒加好友／封鎖）就讓登記頁提醒他，不然到貨通知也收不到
+  out.confirm_sent = await pushConfirm({ ...(out.row as Record<string, unknown>), user_id: userId });
+  return out;
 }
 
 async function cancel(userId: string) {
@@ -189,7 +208,7 @@ async function adminRelease(b: Record<string, any>) {
       }
     }
     if (!updated) continue;
-    const ok = await pushNotice(updated, String(b.liff_url ?? ""));
+    const ok = await pushNotice(updated);
     await db.from("oil_queue").update({ push_ok: ok }).eq("id", updated.id);
     results.push({ ...updated, push_ok: ok });
   }
@@ -225,7 +244,7 @@ async function adminCancel(b: Record<string, any>) {
 async function adminResend(b: Record<string, any>) {
   const { data: row } = await db.from("oil_queue").select("*").eq("id", Number(b.id)).maybeSingle();
   if (!row || row.status !== "已通知") throw new UserError("只有「已通知」的登記可以重發通知");
-  const ok = await pushNotice(row, String(b.liff_url ?? ""));
+  const ok = await pushNotice(row);
   await db.from("oil_queue").update({ push_ok: ok }).eq("id", row.id);
   return { push_ok: ok };
 }
