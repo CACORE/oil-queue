@@ -109,7 +109,8 @@ async function pushConfirm(row: Record<string, any>): Promise<boolean> {
 async function pushNotice(row: Record<string, any>): Promise<boolean> {
   const text = `【惠通行】${row.name} 您好，您登記的「${row.product}」已到貨🎉\n\n` +
     `取貨碼：${row.code}\n` +
-    `請於 ${twDate(row.deadline)} 營業時間內至門市取貨（限購 1 桶），逾期視同放棄。\n` +
+    `⏰ 取貨期限：通知後 ${PICKUP_DAYS} 個營業日內\n` +
+    `請於 ${twDate(row.deadline)} 營業結束前至門市取貨（限購 1 桶），逾期視同放棄。\n` +
     `取貨時請出示取貨碼，或打開登記頁的 QR Code。\n` +
     `👉 ${LIFF_URL}\n` +
     `\n📍 台北市大同區迪化街一段175號\n🈺 週一至週五 08:00–18:00｜週六 08:30–14:00`;
