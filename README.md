@@ -36,6 +36,7 @@
 3. **Supabase Edge Functions** 新增 `oil-queue`，貼上 `index.ts`，**關閉 Verify JWT**
 4. **Edge Function Secrets** 新增：
    - `OIL_LIFF_ID`：LIFF ID
-   - `OIL_ADMIN_PASSWORD`：後台密碼
+   - `OIL_ADMIN_PASSWORD`：管理者密碼（全部功能）
+   - `OIL_STAFF_PASSWORD`：員工密碼（只能取貨兌換、看名單）
    - （`LINE_CHANNEL_ACCESS_TOKEN` 已存在，line-webhook 共用）
 5. `config.js` 填 LIFF ID，push 到 GitHub

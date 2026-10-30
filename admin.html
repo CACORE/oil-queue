@@ -52,6 +52,8 @@ td { padding:8px; border-bottom:1px solid #e8f0ec; vertical-align:top; }
     <button data-tab="release">到貨通知</button>
     <button data-tab="list">登記名單</button>
   </nav>
+  <span id="who" class="hidden" style="font-size:.85rem;color:rgba(255,226,168,.8)"></span>
+  <button id="logout" class="hidden" onclick="logout()" style="background:none;border:1px solid rgba(255,226,168,.4);color:#ffe2a8;padding:5px 12px;border-radius:6px;font-size:.85rem;cursor:pointer">登出</button>
 </header>
 <main>
   <!-- 登入 -->
@@ -61,6 +63,9 @@ td { padding:8px; border-bottom:1px solid #e8f0ec; vertical-align:top; }
       <input type="password" id="pw" onkeydown="if(event.key==='Enter')login()">
       <button class="main" onclick="login()">登入</button>
     </div>
+    <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:.88rem;color:var(--muted);cursor:pointer">
+      <input type="checkbox" id="remember" checked style="width:16px;height:16px">記住這台電腦（管理者在員工電腦上登入時請取消勾選）
+    </label>
     <div id="login-msg" class="msg"></div>
   </div>
 
@@ -131,6 +136,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 const WEEK = "日一二三四五六";
 let pw = "";
+let role = "";   // admin＝管理者、staff＝員工
 let scanner = null;
 let activeRows = [];
 
@@ -153,15 +159,27 @@ function api(body) { return oilApi({ ...body, password: pw }); }
 async function login(saved) {
   pw = saved || $("pw").value;
   try {
-    await api({ action: "admin_login" });
-    try { localStorage.setItem("oil_pw", pw); } catch (e) { /* 無法記住密碼就每次輸入 */ }
-    $("login").classList.add("hidden");
-    $("nav").classList.remove("hidden");
+    const { role: r } = await api({ action: "admin_login" });
+    role = r;
+    if (!saved && $("remember").checked) {
+      try { localStorage.setItem("oil_pw", pw); } catch (e) { /* 無法記住密碼就每次輸入 */ }
+    }
+    $("pw").value = "";
+    // 員工密碼看不到到貨通知（後端也會擋）
+    document.querySelector('#nav button[data-tab="release"]').classList.toggle("hidden", role !== "admin");
+    $("who").textContent = role === "admin" ? "管理者" : "員工";
+    ["login"].forEach((id) => $(id).classList.add("hidden"));
+    ["nav", "who", "logout"].forEach((id) => $(id).classList.remove("hidden"));
     showTab("redeem");
   } catch (e) {
     try { localStorage.removeItem("oil_pw"); } catch (x) { /* 忽略 */ }
     if (!saved) msg("login-msg", "bad", esc(e.message));
   }
+}
+
+function logout() {
+  try { localStorage.removeItem("oil_pw"); } catch (e) { /* 忽略 */ }
+  location.reload();
 }
 
 document.querySelectorAll("#nav button").forEach((b) => b.onclick = () => showTab(b.dataset.tab));
@@ -323,7 +341,8 @@ async function loadList() {
           ? `<br><small>取貨碼 ${esc(r.code)}｜期限 ${esc(fmt(r.deadline).split("）")[0])}）</small>` +
             (r.push_ok === false ? `<br><small class="warn">LINE 沒送出，請打電話</small>` : "")
           : "";
-        const actions = (r.status === "已通知" ? `<button class="small" onclick="resend(${r.id})">重發通知</button> ` : "") +
+        const actions = role !== "admin" ? "" :
+          (r.status === "已通知" ? `<button class="small" onclick="resend(${r.id})">重發通知</button> ` : "") +
           `<button class="small" onclick="cancelRow(${r.id})">取消</button>`;
         return `<tr><td>${n}</td><td>${esc(r.product)}</td><td>${esc(r.name)}<br><small style="color:#888">${esc(r.display_name)}</small></td>
           <td>${esc(r.phone)}</td><td>${esc(fmt(r.created_at))}</td>

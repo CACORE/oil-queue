@@ -1,7 +1,8 @@
 // 油品排隊登記 API（Supabase Edge Function：oil-queue）
 // 客人：LIFF 登記頁帶 LINE idToken 呼叫 register / me / cancel
-// 門市：後台帶密碼呼叫 admin_*（名單、放量通知、查取貨碼、兌換、取消、重發通知）
-// Secrets：OIL_LIFF_ID（LIFF ID，前半段就是 LINE Login 頻道 ID）、OIL_ADMIN_PASSWORD（後台密碼）、
+// 門市：後台帶密碼呼叫 admin_*（名單、放量通知、查取貨碼、兌換、取消、重發通知）；員工密碼只能兌換、看名單
+// Secrets：OIL_LIFF_ID（LIFF ID，前半段就是 LINE Login 頻道 ID）、OIL_ADMIN_PASSWORD（管理者密碼）、
+//          OIL_STAFF_PASSWORD（員工密碼）、
 //          LINE_CHANNEL_ACCESS_TOKEN（叫貨官方帳號，line-webhook 已設好，同專案共用）
 // 部署時關閉 JWT 驗證（LIFF 頁面不會帶 Supabase 金鑰，身分改用 LINE idToken／後台密碼驗證）
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -11,6 +12,8 @@ const LIFF_ID = Deno.env.get("OIL_LIFF_ID") ?? "";
 const LOGIN_CHANNEL = LIFF_ID.split("-")[0];
 const LIFF_URL = `https://liff.line.me/${LIFF_ID}`;
 const ADMIN_PW = Deno.env.get("OIL_ADMIN_PASSWORD") ?? "";
+const STAFF_PW = Deno.env.get("OIL_STAFF_PASSWORD") ?? "";
+const STAFF_ACTIONS = ["admin_login", "admin_list", "admin_lookup", "admin_redeem"]; // 員工密碼只能兌換、看名單
 const LINE_TOKEN = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN") ?? "";
 
 const PRODUCTS = ["沙拉油", "耐炸油"];
@@ -258,10 +261,12 @@ Deno.serve(async (req) => {
     const b = await req.json();
     const action = String(b.action ?? "");
     if (action.startsWith("admin_")) {
-      if (!ADMIN_PW || b.password !== ADMIN_PW) return json({ error: "密碼錯誤" }, 401);
+      const role = ADMIN_PW && b.password === ADMIN_PW ? "admin" : STAFF_PW && b.password === STAFF_PW ? "staff" : "";
+      if (!role) return json({ error: "密碼錯誤" }, 401);
+      if (role === "staff" && !STAFF_ACTIONS.includes(action)) return json({ error: "員工帳號沒有這個權限，請用管理者密碼" }, 403);
       await expireOverdue();
       switch (action) {
-        case "admin_login": return json({ ok: true });
+        case "admin_login": return json({ ok: true, role });
         case "admin_list": return json(await adminList());
         case "admin_release": return json(await adminRelease(b));
         case "admin_lookup": return json(await adminLookup(b));
