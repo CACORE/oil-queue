@@ -337,7 +337,7 @@ function waitHtml(queued, released28, limit) {
   const basis = useReal ? `近 4 週實際平均每週 ${perWeek.toFixed(1)} 桶` : `以每週 ${WEEKLY_BASE} 桶估算`;
   const over = weeks > WAIT_LIMIT_WEEKS || queued >= limit;
   return `<div style="flex-basis:100%;padding:10px 12px;border-radius:8px;${over ? "background:#fdecea;color:var(--red)" : "background:#f5fbf7"}">
-    合計排隊 <b>${queued}</b> / ${limit} 人，預估最後一位約等 <b>${weeks.toFixed(1)}</b> 週（${basis}）
+    合計排隊 <b>${queued}</b>${limit < 9999 ? ` / ${limit}` : ""} 人，預估最後一位約等 <b>${weeks.toFixed(1)}</b> 週（${basis}）
     ${queued >= limit ? `<br>⛔ 已達上限 ${limit} 人，登記頁自動暫停受理；到貨通知後名額釋出會自動重新開放` : ""}
     ${weeks > WAIT_LIMIT_WEEKS && queued < limit ? `<br>⚠️ 預估等待超過 ${WAIT_LIMIT_WEEKS} 週` : ""}
   </div>`;

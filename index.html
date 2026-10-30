@@ -48,6 +48,7 @@ ul.rules { margin:0; padding-left:20px; color:var(--muted); font-size:.88rem; li
     <div id="prev-msg" class="card muted hidden"></div>
     <div class="card">
       <h2>填寫登記資料</h2>
+      <div id="queue-info" class="muted hidden" style="background:#f5fbf7;border-radius:8px;padding:10px 12px;margin-bottom:4px"></div>
       <label>要登記的油品（只能選一種）</label>
       <div class="choices">
         <label><input type="radio" name="product" value="沙拉油"><span>沙拉油</span></label>
@@ -160,6 +161,12 @@ function render(data, stale) {
     }
     $("submit-btn").disabled = !!((r && r.suspend_text) || data.full);
     if (r) { $("name").value = r.name || ""; $("phone").value = r.phone || ""; }
+    if (data.queue) {
+      $("queue-info").innerHTML = "📊 目前排隊狀況<br>" + Object.entries(data.queue).map(([p, q]) =>
+        `${esc(p)}：${q.count} 人排隊，現在登記${esc(q.wait_text)}`).join("<br>") +
+        `<br><small>依近期到貨量估算，僅供參考</small>`;
+      $("queue-info").classList.remove("hidden");
+    }
     show("form-view");
     return;
   }
@@ -169,6 +176,7 @@ function render(data, stale) {
         <span class="tag">${esc(r.product)}</span>
         <p class="muted" style="margin:14px 0 0">您目前排在</p>
         <div class="big">第 ${r.position} 位</div>
+        ${r.wait_text ? `<p style="margin:4px 0 0;font-weight:700;color:var(--green)">${esc(r.wait_text)}</p><p class="muted" style="margin:0;font-size:.8rem">依近期到貨量估算，僅供參考</p>` : ""}
         <p class="muted">到貨輪到您時，會用官方 LINE 通知您<br>請勿封鎖本帳號，以免收不到通知</p>
       </div>
       <div class="card muted">

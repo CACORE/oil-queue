@@ -22,6 +22,8 @@ const COOLDOWN_DAYS = 10; // 取貨後幾天內不能再登記
 const NOSHOW_LIMIT = 2;   // 累計逾期未取幾次就暫停登記
 const SUSPEND_DAYS = 30;  // 暫停幾天（從最後一次逾期的期限起算）
 const QUEUE_LIMIT = Number(Deno.env.get("OIL_QUEUE_LIMIT")) || 30; // 兩種油合計排隊上限（Secrets 可調，不用重新部署）
+const WEEKLY_BASE_EACH = 5; // 還沒累積資料時，假設各品項每週放出幾桶（合計約 10 桶）
+const HISTORY_MIN = 20;     // 近 4 週合計放出至少幾桶，才改用實際數字估等待時間
 const FULL_TEXT = "目前登記已額滿，暫停受理。到貨通知後會陸續釋出名額，請過幾天再試。";
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // 去掉 0/O、1/I/L 容易看錯的字
 const WEEK = "日一二三四五六";
@@ -106,7 +108,8 @@ async function pushConfirm(row: Record<string, any>): Promise<boolean> {
   // 登記確認：查詢連結留在客人的聊天室，忘了網址也查得到
   const text = `【惠通行】${row.name} 您好，已收到您的油品排隊登記✅\n\n` +
     `品項：${row.product} 1 桶\n` +
-    `目前順位：第 ${row.position} 位\n\n` +
+    `目前順位：第 ${row.position} 位\n` +
+    (row.wait_text ? `${row.wait_text}（依近期到貨量估算，僅供參考）\n` : "") + `\n` +
     `到貨輪到您時，會再用 LINE 通知您取貨。\n` +
     `👉 隨時查詢目前順位：${LIFF_URL}\n\n` +
     `※ 品牌無法指定（大成／美食家），依當次到貨品牌出貨\n` +
@@ -131,7 +134,7 @@ async function me(userId: string): Promise<Record<string, unknown>> {
   const { data: rows } = await db.from("oil_queue").select("*").eq("user_id", userId)
     .order("id", { ascending: false }).limit(1);
   const row = rows?.[0];
-  if (!row) return { row: null, full: await queueFull() };
+  if (!row) return { row: null, full: await queueFull(), queue: await queueInfo() };
   const out: Record<string, unknown> = {
     row: {
       id: row.id, name: row.name, phone: row.phone, product: row.product, status: row.status,
@@ -139,7 +142,10 @@ async function me(userId: string): Promise<Record<string, unknown>> {
     },
   };
   const r = out.row as Record<string, unknown>;
-  if (row.status === "排隊中") r.position = await position(row);
+  if (row.status === "排隊中") {
+    r.position = await position(row);
+    r.wait_text = waitText(r.position as number, (await weeklyRates())[row.product]);
+  }
   if (row.status === "已通知") {
     r.code = row.code;
     r.deadline_text = twDate(row.deadline);
@@ -154,7 +160,40 @@ async function me(userId: string): Promise<Record<string, unknown>> {
     if (until) r.suspend_text = suspendText(until);
   }
   // 這個人可以重新登記時，先告訴登記頁是否已額滿（不用填完才被擋）
-  if (["已逾期", "已取消"].includes(row.status) || (row.status === "已取貨" && !r.next_text)) out.full = await queueFull();
+  if (["已逾期", "已取消"].includes(row.status) || (row.status === "已取貨" && !r.next_text)) {
+    out.full = await queueFull();
+    out.queue = await queueInfo();
+  }
+  return out;
+}
+
+async function weeklyRates(): Promise<Record<string, number>> {
+  // 各品項每週放出幾桶：近 4 週累計放出夠多就用實際平均，不然用基準值（每週合計約 10 桶，各抓一半）
+  const { data } = await db.from("oil_queue").select("product")
+    .gte("notified_at", new Date(Date.now() - 28 * 86400000).toISOString());
+  const cnt: Record<string, number> = Object.fromEntries(PRODUCTS.map((p) => [p, 0]));
+  for (const x of data ?? []) cnt[x.product] = (cnt[x.product] ?? 0) + 1;
+  const real = Object.values(cnt).reduce((a, b) => a + b, 0) >= HISTORY_MIN;
+  return Object.fromEntries(PRODUCTS.map((p) => [p, real ? cnt[p] / 4 : WEEKLY_BASE_EACH]));
+}
+
+function waitText(n: number, perWeek: number): string {
+  if (!perWeek) return "近期沒有到貨紀錄，暫時無法預估";
+  const w = n / perWeek;
+  return w <= 1 ? "預估 1 週內" : `預估約 ${Math.ceil(w)} 週`;
+}
+
+async function queueInfo(): Promise<Record<string, { count: number; wait_text: string }>> {
+  // 登記前讓客人看各品項目前排幾人、排進去大約要等多久
+  const [{ data }, rates] = await Promise.all([
+    db.from("oil_queue").select("product").eq("status", "排隊中"),
+    weeklyRates(),
+  ]);
+  const out: Record<string, { count: number; wait_text: string }> = {};
+  for (const p of PRODUCTS) {
+    const count = (data ?? []).filter((x) => x.product === p).length;
+    out[p] = { count, wait_text: waitText(count + 1, rates[p]) };
+  }
   return out;
 }
 
