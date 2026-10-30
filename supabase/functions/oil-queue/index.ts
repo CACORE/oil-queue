@@ -19,6 +19,8 @@ const LINE_TOKEN = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN") ?? "";
 const PRODUCTS = ["沙拉油", "耐炸油"];
 const PICKUP_DAYS = 2;   // 通知後幾個營業日內取貨（週日不算）
 const COOLDOWN_DAYS = 10; // 取貨後幾天內不能再登記
+const NOSHOW_LIMIT = 2;   // 累計逾期未取幾次就暫停登記
+const SUSPEND_DAYS = 30;  // 暫停幾天（從最後一次逾期的期限起算）
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // 去掉 0/O、1/I/L 容易看錯的字
 const WEEK = "日一二三四五六";
 
@@ -145,7 +147,24 @@ async function me(userId: string): Promise<Record<string, unknown>> {
     r.redeemed_text = twDate(row.redeemed_at);
     if (next > new Date()) r.next_text = twDate(next);
   }
+  if (row.status === "已逾期") {
+    const until = await suspendedUntil(userId);
+    if (until) r.suspend_text = suspendText(until);
+  }
   return out;
+}
+
+async function suspendedUntil(userId: string): Promise<Date | null> {
+  // 累計逾期未取 NOSHOW_LIMIT 次以上：從最後一次逾期的期限起暫停 SUSPEND_DAYS 天（客人/門市取消的不算）
+  const { data } = await db.from("oil_queue").select("deadline").eq("user_id", userId).eq("status", "已逾期")
+    .order("deadline", { ascending: false });
+  if (!data || data.length < NOSHOW_LIMIT) return null;
+  const until = new Date(new Date(data[0].deadline).getTime() + SUSPEND_DAYS * 86400000);
+  return until > new Date() ? until : null;
+}
+
+function suspendText(until: Date): string {
+  return `您已逾期未取貨 ${NOSHOW_LIMIT} 次，暫停登記資格 ${SUSPEND_DAYS} 天，${twDate(new Date(until.getTime() + 1000))} 起可以重新登記`;
 }
 
 async function register(userId: string, lineName: string, b: Record<string, any>) {
@@ -166,6 +185,8 @@ async function register(userId: string, lineName: string, b: Record<string, any>
     const next = new Date(new Date(prev.redeemed_at).getTime() + COOLDOWN_DAYS * 86400000);
     if (next > new Date()) throw new UserError(`取貨後 ${COOLDOWN_DAYS} 天內不能再登記，${twDate(next)} 起可以重新登記`);
   }
+  const until = await suspendedUntil(userId);
+  if (until) throw new UserError(suspendText(until));
   const { error } = await db.from("oil_queue").insert({ user_id: userId, display_name: lineName, name, phone, product });
   if (error) {
     if (error.code === "23505") throw new UserError("您已經登記過了，每人只能登記一種油品");
@@ -189,7 +210,12 @@ async function adminList() {
     .in("status", ["排隊中", "已通知"]).order("id");
   const { data: done } = await db.from("oil_queue").select("*")
     .in("status", ["已取貨", "已逾期", "已取消"]).order("id", { ascending: false }).limit(100);
-  return { active: active ?? [], done: done ?? [] };
+  // 最近 4 週各品項放出（通知）幾桶，後台估算等待週數用
+  const { data: rel } = await db.from("oil_queue").select("product")
+    .gte("notified_at", new Date(Date.now() - 28 * 86400000).toISOString());
+  const released28: Record<string, number> = Object.fromEntries(PRODUCTS.map((p) => [p, 0]));
+  for (const x of rel ?? []) released28[x.product] = (released28[x.product] ?? 0) + 1;
+  return { active: active ?? [], done: done ?? [], released28 };
 }
 
 async function adminRelease(b: Record<string, any>) {

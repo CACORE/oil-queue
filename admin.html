@@ -325,13 +325,30 @@ async function release() {
 }
 
 // ── 登記名單 ──
+const WEEKLY_BASE = 10;      // 還沒累積資料時，假設每週放出幾桶（兩種油合計）
+const WAIT_LIMIT_WEEKS = 3;  // 預估等待超過幾週就提醒暫停受理
+const HISTORY_MIN = 20;      // 近 4 週放出至少幾桶，才改用實際數字（資料太少不準）
+
+function waitHtml(queued, released28) {
+  const recent = Object.values(released28).reduce((a, b) => a + b, 0);
+  const useReal = recent >= HISTORY_MIN;
+  const perWeek = useReal ? recent / 4 : WEEKLY_BASE;
+  const weeks = queued / perWeek;
+  const basis = useReal ? `近 4 週實際平均每週 ${perWeek.toFixed(1)} 桶` : `以每週 ${WEEKLY_BASE} 桶估算`;
+  const over = weeks > WAIT_LIMIT_WEEKS;
+  return `<div style="flex-basis:100%;padding:10px 12px;border-radius:8px;${over ? "background:#fdecea;color:var(--red)" : "background:#f5fbf7"}">
+    合計排隊 <b>${queued}</b> 人，預估最後一位約等 <b>${weeks.toFixed(1)}</b> 週（${basis}）
+    ${over ? `<br>⚠️ 超過 ${WAIT_LIMIT_WEEKS} 週，建議在 LINE 歡迎訊息註明「登記已滿，暫停受理」` : ""}
+  </div>`;
+}
 async function loadList() {
   try {
-    const { active, done } = await api({ action: "admin_list" });
+    const { active, done, released28 = {} } = await api({ action: "admin_list" });
     activeRows = active;
     const cnt = (p, s) => active.filter((r) => r.product === p && r.status === s).length;
     $("list-stats").innerHTML = ["沙拉油", "耐炸油"].map((p) =>
-      `<span>${p}：排隊中 <b>${cnt(p, "排隊中")}</b>　已通知待取貨 <b>${cnt(p, "已通知")}</b></span>`).join("");
+      `<span>${p}：排隊中 <b>${cnt(p, "排隊中")}</b>　已通知待取貨 <b>${cnt(p, "已通知")}</b>　近 4 週放出 <b>${released28[p] || 0}</b> 桶</span>`).join("") +
+      waitHtml(active.filter((r) => r.status === "排隊中").length, released28);
     const pos = { 沙拉油: 0, 耐炸油: 0 };
     $("list-active").innerHTML = active.length ? `<table>
       <thead><tr><th>順位</th><th>品項</th><th>姓名／店名</th><th>電話</th><th>登記時間</th><th>狀態</th><th></th></tr></thead>

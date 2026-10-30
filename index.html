@@ -71,6 +71,7 @@ ul.rules { margin:0; padding-left:20px; color:var(--muted); font-size:.88rem; li
         <li><b>品牌無法指定（大成／美食家），依當次到貨品牌出貨</b></li>
         <li>依登記順序，到貨時以本官方 LINE 通知</li>
         <li>收到通知後 2 個營業日內至門市取貨，逾期視同放棄</li>
+        <li>逾期未取累計 2 次，暫停登記資格 30 天</li>
         <li>取貨後 10 天內無法再次登記</li>
         <li>僅限門市自取，取貨時請出示取貨碼</li>
       </ul>
@@ -153,8 +154,10 @@ function render(data, stale) {
       $("prev-msg").innerHTML = r.status === "已逾期"
         ? "您上次的登記已超過取貨期限，已自動取消。如仍需要，請重新登記（會排到最後）。"
         : "您上次的登記已取消。如仍需要，請重新登記。";
+      if (r.suspend_text) $("prev-msg").innerHTML = `<b style="color:var(--red)">⛔ ${esc(r.suspend_text)}</b>`;
       $("prev-msg").classList.remove("hidden");
     }
+    $("submit-btn").disabled = !!(r && r.suspend_text);
     if (r) { $("name").value = r.name || ""; $("phone").value = r.phone || ""; }
     show("form-view");
     return;
