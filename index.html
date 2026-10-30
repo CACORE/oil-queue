@@ -79,12 +79,22 @@ ul.rules { margin:0; padding-left:20px; color:var(--muted); font-size:.88rem; li
 </main>
 
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script async id="qr-lib" src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="config.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 let idToken = "";
+const CACHE_KEY = "oil_me";   // 這支手機上次查到的狀態：再打開時先秀出來，最新資料回來再換掉
+
+function cacheGet() { try { return JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); } catch (e) { return null; } }
+function cacheSet(d) { try { localStorage.setItem(CACHE_KEY, JSON.stringify(d)); } catch (e) { /* 存不了就算了 */ } }
+function update(data) { cacheSet(data); render(data); }
+
+function drawQR(code) {   // QR 套件是背景載入，還沒好就等它載完再畫
+  if (window.QRCode) new QRCode($("qr"), { text: code, width: 180, height: 180 });
+  else $("qr-lib").addEventListener("load", () => drawQR(code), { once: true });
+}
 
 function show(view) {
   ["loading", "form-view", "status-view"].forEach((v) => $(v).classList.toggle("hidden", v !== view));
@@ -97,6 +107,8 @@ function pageError(msg) {
 }
 
 async function start() {
+  const cached = cacheGet();
+  if (cached && cached.row && ["排隊中", "已通知", "已取貨"].includes(cached.row.status)) render(cached, true);
   try {
     await liff.init({ liffId: window.OIL.LIFF_ID });
     if (!liff.isLoggedIn()) {
@@ -106,11 +118,10 @@ async function start() {
       return;
     }
     idToken = liff.getIDToken();
-    try {
-      const p = await liff.getProfile();
+    liff.getProfile().then((p) => {   // 不等它，跟查狀態同時跑
       if (p && p.displayName) $("name").placeholder = p.displayName;
-    } catch (e) { /* 拿不到名稱不影響登記 */ }
-    render(await oilApi({ action: "me", idToken }));
+    }).catch(() => { /* 拿不到名稱不影響登記 */ });
+    update(await oilApi({ action: "me", idToken }));
   } catch (e) {
     pageError(e.message || "頁面載入失敗，請關閉後重新掃描 QR Code");
   }
@@ -130,7 +141,7 @@ function showOpenInLine() {
   show("status-view");
 }
 
-function render(data) {
+function render(data, stale) {
   const r = data.row;
   if (!r || ["已逾期", "已取消"].includes(r.status) || (r.status === "已取貨" && !r.next_text)) {
     if (r && r.status !== "已取貨") {
@@ -176,9 +187,10 @@ function render(data) {
   if (["排隊中", "已通知"].includes(r.status)) {
     html += `<button class="ghost" onclick="cancelReg()">取消登記</button>`;
   }
+  if (stale) html = `<p class="muted center" style="margin:0 0 10px">🔄 更新中…</p>` + html;
   $("status-view").innerHTML = html;
   show("status-view");
-  if (r.status === "已通知") new QRCode($("qr"), { text: r.code, width: 180, height: 180 });
+  if (r.status === "已通知") drawQR(r.code);
 }
 
 async function submitForm() {
@@ -193,7 +205,7 @@ async function submitForm() {
   if (!confirm(`確認登記「${product}」1 桶？\n每人只能登記一種油品。`)) return;
   $("submit-btn").disabled = true;
   try {
-    render(await oilApi({ action: "register", idToken, product, name, phone }));
+    update(await oilApi({ action: "register", idToken, product, name, phone }));
     window.scrollTo(0, 0);
   } catch (e) {
     formError(e.message);
@@ -210,7 +222,7 @@ function formError(msg) {
 async function cancelReg() {
   if (!confirm("確定要取消登記嗎？取消後重新登記會排到最後。")) return;
   try {
-    render(await oilApi({ action: "cancel", idToken }));
+    update(await oilApi({ action: "cancel", idToken }));
   } catch (e) {
     pageError(e.message);
   }

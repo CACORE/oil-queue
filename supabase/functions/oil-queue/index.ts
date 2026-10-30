@@ -237,9 +237,9 @@ Deno.serve(async (req) => {
   try {
     const b = await req.json();
     const action = String(b.action ?? "");
-    await expireOverdue();
     if (action.startsWith("admin_")) {
       if (!ADMIN_PW || b.password !== ADMIN_PW) return json({ error: "密碼錯誤" }, 401);
+      await expireOverdue();
       switch (action) {
         case "admin_login": return json({ ok: true });
         case "admin_list": return json(await adminList());
@@ -251,7 +251,8 @@ Deno.serve(async (req) => {
       }
       return json({ error: "未知的動作" }, 400);
     }
-    const user = await lineUser(String(b.idToken ?? ""));
+    // 清逾期跟向 LINE 驗證身分互不相干，同時跑省一趟等待
+    const [user] = await Promise.all([lineUser(String(b.idToken ?? "")), expireOverdue()]);
     switch (action) {
       case "me": return json(await me(user.userId));
       case "register": return json(await register(user.userId, user.name, b));
