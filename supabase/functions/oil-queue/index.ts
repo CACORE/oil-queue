@@ -197,6 +197,10 @@ async function register(userId: string, lineName: string, b: Record<string, any>
   }
   const until = await suspendedUntil(userId);
   if (until) throw new UserError(suspendText(until));
+  // 同一支電話只能有一筆有效登記（防一人用多個 LINE 帳號、填同電話重複排隊）
+  const { count: samePhone } = await db.from("oil_queue").select("id", { count: "exact", head: true })
+    .eq("phone", phone).in("status", ["排隊中", "已通知"]);
+  if (samePhone) throw new UserError("這支電話已經有一筆登記在排隊中，每支電話只能登記一筆");
   if (await queueFull()) throw new UserError(FULL_TEXT);
   const { error } = await db.from("oil_queue").insert({ user_id: userId, display_name: lineName, name, phone, product });
   if (error) {
