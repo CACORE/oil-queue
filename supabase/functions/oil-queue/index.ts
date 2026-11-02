@@ -124,6 +124,7 @@ async function pushNotice(row: Record<string, any>): Promise<boolean> {
     `請於 ${twDate(row.deadline)} 營業結束前至門市取貨（限購 1 桶），逾期視同放棄。\n` +
     `※ 品牌無法指定（大成／美食家），依當次到貨品牌出貨\n` +
     `取貨時請出示取貨碼，或打開登記頁的 QR Code。\n` +
+    `⚠️ 限登記本人取貨，請本人用手機出示，不接受截圖領取。\n` +
     `👉 ${LIFF_URL}\n` +
     `\n📍 台北市大同區迪化街一段175號\n🈺 週一至週五 08:00–18:00｜週六 08:30–14:00`;
   return pushText(row.user_id, text, row.id);
