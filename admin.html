@@ -110,6 +110,14 @@ td { padding:8px; border-bottom:1px solid #e8f0ec; vertical-align:top; }
       <p style="color:var(--muted);font-size:.85rem;margin:10px 0 0">按下後會依登記順序把前 N 位改成「已通知」，並用官方 LINE 傳送取貨碼（每人 1 桶）。</p>
       <div id="rel-msg" class="msg"></div>
     </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0">到貨紀錄</h2>
+        <button class="small" onclick="loadReleases()">🔄 重新整理</button>
+      </div>
+      <div id="rel-stats" class="stats" style="margin-top:12px"></div>
+      <div class="scroll" id="rel-history"></div>
+    </div>
   </section>
 
   <!-- 登記名單 -->
@@ -190,6 +198,7 @@ function showTab(tab) {
   if (tab !== "redeem") stopScan();
   if (tab === "redeem") { $("pend-filter").focus(); loadPending(); }
   if (tab === "list") loadList();
+  if (tab === "release") loadReleases();
 }
 
 // ── 取貨兌換 ──
@@ -321,6 +330,30 @@ async function release() {
     msg("rel-msg", "bad", esc(e.message));
   } finally {
     $("rel-btn").disabled = false;
+    loadReleases();
+  }
+}
+
+// 到貨紀錄：每次放量一筆，通知桶數＝實際通知的人數（每人 1 桶）
+async function loadReleases() {
+  try {
+    const { releases = [] } = await api({ action: "admin_list" });
+    const total = { 沙拉油: 0, 耐炸油: 0 };
+    for (const r of releases) total[r.product] = (total[r.product] || 0) + r.notified;
+    $("rel-stats").innerHTML = ["沙拉油", "耐炸油"].map((p) => `<span>${p}：累計放出 <b>${total[p]}</b> 桶</span>`).join("") +
+      `<span>合計 <b>${total.沙拉油 + total.耐炸油}</b> 桶（${releases.length} 次）</span>`;
+    $("rel-history").innerHTML = releases.length ? `<table>
+      <thead><tr><th>日期時間</th><th>品項</th><th>通知桶數</th><th>備註</th></tr></thead>
+      <tbody>${releases.map((r) => {
+        const notes = [];
+        if (r.qty > r.notified) notes.push(`輸入 ${r.qty} 桶，排隊只有 ${r.notified} 位`);
+        if (r.push_failed > 0) notes.push(`<span class="warn">LINE 沒送出 ${r.push_failed} 位</span>`);
+        if (r.note) notes.push(esc(r.note));
+        return `<tr><td style="white-space:nowrap">${esc(fmt(r.created_at))}</td><td>${esc(r.product)}</td>
+          <td><b>${r.notified}</b> 桶</td><td>${notes.join("<br>")}</td></tr>`;
+      }).join("")}</tbody></table>` : `<p style="color:var(--muted)">還沒有到貨紀錄</p>`;
+  } catch (e) {
+    $("rel-history").innerHTML = `<p class="warn">${esc(e.message)}</p>`;
   }
 }
 

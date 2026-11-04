@@ -26,3 +26,15 @@ create unique index if not exists oil_queue_one_active
 create index if not exists oil_queue_product_status on oil_queue (product, status, id);
 
 alter table oil_queue enable row level security;
+
+-- 到貨紀錄：後台每按一次「通知前幾位」記一筆（什麼時候、哪種油、放出幾桶、實際通知幾位）
+create table if not exists oil_releases (
+  id          bigserial primary key,
+  product     text not null check (product in ('沙拉油', '耐炸油')),
+  qty         int not null,            -- 這次放出幾桶（後台輸入的數字）
+  notified    int not null,            -- 實際通知幾位（排隊人數不夠時會比 qty 少）
+  push_failed int not null default 0,  -- LINE 沒送出、要打電話的人數
+  note        text,
+  created_at  timestamptz not null default now()
+);
+alter table oil_releases enable row level security;

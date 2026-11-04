@@ -270,7 +270,9 @@ async function adminList() {
     .gte("notified_at", new Date(Date.now() - 28 * 86400000).toISOString());
   const released28: Record<string, number> = Object.fromEntries(PRODUCTS.map((p) => [p, 0]));
   for (const x of rel ?? []) released28[x.product] = (released28[x.product] ?? 0) + 1;
-  return { active: active ?? [], done: done ?? [], released28, limit: QUEUE_LIMIT };
+  // 到貨紀錄（每次放量一筆）；表還沒建好就回空的，不影響名單
+  const { data: releases } = await db.from("oil_releases").select("*").order("created_at", { ascending: false }).limit(200);
+  return { active: active ?? [], done: done ?? [], released28, limit: QUEUE_LIMIT, releases: releases ?? [] };
 }
 
 async function adminRelease(b: Record<string, any>) {
@@ -299,6 +301,11 @@ async function adminRelease(b: Record<string, any>) {
     await db.from("oil_queue").update({ push_ok: ok }).eq("id", updated.id);
     results.push({ ...updated, push_ok: ok });
   }
+  // 記一筆到貨紀錄：什麼時候、哪種油、放出幾桶、實際通知幾位（記錄失敗不影響通知）
+  const { error: logErr } = await db.from("oil_releases").insert({
+    product, qty, notified: results.length, push_failed: results.filter((r) => !r.push_ok).length,
+  });
+  if (logErr) console.error("到貨紀錄寫入失敗", logErr);
   return { released: results, short: qty - results.length };
 }
 
