@@ -42,6 +42,8 @@ td { padding:8px; border-bottom:1px solid #e8f0ec; vertical-align:top; }
 .warn { color:var(--red); font-weight:700; }
 .hidden { display:none; }
 .scroll { overflow-x:auto; }
+.list-tbl { table-layout:fixed; min-width:680px; }
+.list-tbl td { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .pboxes { display:flex; gap:10px; flex-wrap:wrap; margin:10px 0; }
 .pbox { flex:1 1 220px; text-align:left; background:#fff; border:2px solid var(--line); border-radius:10px; padding:12px 14px; cursor:pointer; font:inherit; color:inherit; line-height:1.8; }
 .pbox.on { border-color:var(--green); background:#f5fbf7; }
@@ -424,47 +426,52 @@ function renderList() {
     const notified = of(p, "已通知");
     const deadlines = [...new Set(notified.map((r) => day(r.deadline)))].join("、");
     const failed = notified.filter((r) => r.push_ok === false).length;
-    return `<button class="pbox${p === listProduct ? " on" : ""}" onclick="pickProduct('${p}')">
+    return `<div class="pbox${p === listProduct ? " on" : ""}" onclick="pickProduct('${p}')">
       <div class="pname">🛢️ ${p}</div>
       排隊中 <b>${of(p, "排隊中").length}</b> 人<br>
       待取貨 <b>${notified.length}</b> 人${deadlines ? `（期限 ${deadlines}）` : ""}
       ${failed ? `<br><span class="warn">其中 ${failed} 位 LINE 沒送出，請打電話</span>` : ""}<br>
       <span style="color:var(--muted);font-size:.88rem">近 4 週放出 ${released28[p] || 0} 桶</span>
-    </button>`;
+    </div>`;
   }).join("");
   $("list-wait").innerHTML = waitHtml(active.filter((r) => r.status === "排隊中").length, released28, limit);
 
   const p = listProduct;
   const notified = of(p, "已通知");
   $("list-notified-title").textContent = `${p}｜待取貨（${notified.length} 人）`;
-  $("list-notified").innerHTML = notified.length ? `<table>
-    <thead><tr><th>姓名／店名</th><th>電話</th><th>取貨碼</th><th>期限</th><th>通知時間</th><th></th></tr></thead>
-    <tbody>${notified.map((r) => `<tr>
-      <td>${esc(r.name)}<br><small style="color:#888">${esc(r.display_name)}</small></td>
-      <td>${esc(r.phone)}${r.push_ok === false ? `<br><small class="warn">LINE 沒送出，請打電話</small>` : ""}</td>
-      <td style="font-family:monospace;font-weight:700;letter-spacing:.1em">${esc(r.code)}</td>
-      <td style="white-space:nowrap">${esc(day(r.deadline))}</td>
-      <td style="white-space:nowrap">${esc(fmt(r.notified_at))}</td>
-      <td style="white-space:nowrap">${actionsHtml(r)}</td></tr>`).join("")}</tbody></table>`
+  // 三張表用同一組欄寬，上下欄位對齊：# ｜姓名｜電話｜時間｜取貨碼／期限｜操作或狀態
+  const table = (head, body) => `<table class="list-tbl"><colgroup>
+    <col style="width:52px"><col style="width:26%"><col style="width:15%"><col style="width:17%"><col style="width:17%"><col>
+    </colgroup><thead><tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`;
+  const nameTd = (r) => `<td>${esc(r.name)}<br><small style="color:#888">${esc(r.display_name)}</small></td>`;
+  const codeHtml = (r) => `<span style="font-family:monospace;font-weight:700;letter-spacing:.1em">${esc(r.code)}</span>`;
+
+  $("list-notified").innerHTML = notified.length ? table(
+    ["#", "姓名／店名", "電話", "通知時間", "取貨碼／期限", ""],
+    notified.map((r, i) => `<tr><td>${i + 1}</td>${nameTd(r)}
+      <td>${esc(r.phone)}${r.push_ok === false ? `<br><small class="warn">LINE 沒送出</small>` : ""}</td>
+      <td>${esc(fmt(r.notified_at))}</td>
+      <td>${codeHtml(r)}<br><small>期限 ${esc(day(r.deadline))}</small></td>
+      <td>${actionsHtml(r)}</td></tr>`).join(""))
     : `<p style="color:var(--muted)">目前沒有待取貨的人</p>`;
 
   const queued = of(p, "排隊中");
   $("list-queued-title").textContent = `${p}｜排隊中（${queued.length} 人）`;
-  $("list-queued").innerHTML = queued.length ? `<table>
-    <thead><tr><th>順位</th><th>姓名／店名</th><th>電話</th><th>登記時間</th><th></th></tr></thead>
-    <tbody>${queued.map((r, i) => `<tr><td><b>${i + 1}</b></td>
-      <td>${esc(r.name)}<br><small style="color:#888">${esc(r.display_name)}</small></td>
-      <td>${esc(r.phone)}</td><td style="white-space:nowrap">${esc(fmt(r.created_at))}</td>
-      <td style="white-space:nowrap">${actionsHtml(r)}</td></tr>`).join("")}</tbody></table>`
+  $("list-queued").innerHTML = queued.length ? table(
+    ["順位", "姓名／店名", "電話", "登記時間", "", ""],
+    queued.map((r, i) => `<tr><td><b>${i + 1}</b></td>${nameTd(r)}
+      <td>${esc(r.phone)}</td><td>${esc(fmt(r.created_at))}</td><td></td>
+      <td>${actionsHtml(r)}</td></tr>`).join(""))
     : `<p style="color:var(--muted)">目前沒有人排隊</p>`;
 
   const doneRows = done.filter((r) => r.product === p);
   $("list-done-title").textContent = `${p}｜最近完成（已取貨／已逾期／已取消）`;
-  $("list-done").innerHTML = doneRows.length ? `<table>
-    <thead><tr><th>姓名／店名</th><th>電話</th><th>狀態</th><th>取貨／通知時間</th><th>取貨碼</th></tr></thead>
-    <tbody>${doneRows.map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(r.phone)}</td>
-      <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span></td>
-      <td>${esc(fmt(r.redeemed_at || r.notified_at || r.created_at))}</td><td>${esc(r.code)}</td></tr>`).join("")}</tbody></table>`
+  $("list-done").innerHTML = doneRows.length ? table(
+    ["", "姓名／店名", "電話", "取貨／通知時間", "取貨碼", "狀態"],
+    doneRows.map((r) => `<tr><td></td>${nameTd(r)}<td>${esc(r.phone)}</td>
+      <td>${esc(fmt(r.redeemed_at || r.notified_at || r.created_at))}</td>
+      <td>${r.code ? codeHtml(r) : ""}</td>
+      <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span></td></tr>`).join(""))
     : `<p style="color:var(--muted)">尚無資料</p>`;
 }
 
