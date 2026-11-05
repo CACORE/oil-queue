@@ -452,7 +452,7 @@ function renderList() {
       <td>${esc(r.phone)}${r.push_ok === false ? `<br><small class="warn">LINE 沒送出</small>` : ""}</td>
       <td>${esc(fmt(r.notified_at))}</td>
       <td>${codeHtml(r)}<br><small>期限 ${esc(day(r.deadline))}</small></td>
-      <td>${actionsHtml(r)}</td></tr>`).join(""))
+      <td style="text-align:right">${actionsHtml(r)}</td></tr>`).join(""))
     : `<p style="color:var(--muted)">目前沒有待取貨的人</p>`;
 
   const queued = of(p, "排隊中");
@@ -461,7 +461,7 @@ function renderList() {
     ["順位", "姓名／店名", "電話", "登記時間", "", ""],
     queued.map((r, i) => `<tr><td><b>${i + 1}</b></td>${nameTd(r)}
       <td>${esc(r.phone)}</td><td>${esc(fmt(r.created_at))}</td><td></td>
-      <td>${actionsHtml(r)}</td></tr>`).join(""))
+      <td style="text-align:right">${actionsHtml(r)}</td></tr>`).join(""))
     : `<p style="color:var(--muted)">目前沒有人排隊</p>`;
 
   const doneRows = done.filter((r) => r.product === p);
