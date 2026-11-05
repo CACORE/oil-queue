@@ -6,25 +6,25 @@
 <meta name="robots" content="noindex">
 <title>油品登記後台</title>
 <style>
-:root { --green:#0e3f29; --line:#dce8e1; --muted:#5b7466; --red:#b3261e; --orange:#8a4b00; --bg:#f4f8f5; }
+:root { --green:#0e3f29; --gold:#ffd79a; --line:#ece2cc; --muted:#6b6459; --text:#2b2b2b; --red:#822925; --orange:#8a4b00; --bg:#faf7ed; --sel-bg:#fdf8ee; --red-bg:#f9ece8; }
 * { box-sizing:border-box; }
-body { margin:0; background:var(--bg); color:#1d2b24; font-family:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif; }
-header { background:var(--green); color:#ffe2a8; padding:12px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif; }
+header { background:var(--green); color:var(--gold); padding:12px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 header h1 { margin:0; font-size:1.1rem; flex:1; }
 nav { display:flex; gap:6px; }
-nav button { background:none; border:1px solid rgba(255,226,168,.4); color:#ffe2a8; padding:6px 14px; border-radius:6px; font-size:.9rem; cursor:pointer; }
-nav button.on { background:#ffe2a8; color:var(--green); font-weight:700; }
+nav button { background:none; border:1px solid rgba(255,215,154,.4); color:var(--gold); padding:6px 14px; border-radius:6px; font-size:.9rem; cursor:pointer; }
+nav button.on { background:var(--gold); color:var(--green); font-weight:700; }
 main { max-width:960px; margin:0 auto; padding:16px; }
 .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:14px; }
 .card h2 { margin:0 0 12px; font-size:1rem; color:var(--green); }
-input, select { padding:10px; font-size:1rem; border:1px solid #c8dcd0; border-radius:8px; }
-button.main { padding:10px 20px; font-size:1rem; border:0; border-radius:8px; background:var(--green); color:#ffe2a8; font-weight:700; cursor:pointer; }
+input, select { padding:10px; font-size:1rem; border:1px solid var(--line); border-radius:8px; }
+button.main { padding:10px 20px; font-size:1rem; border:0; border-radius:8px; background:var(--green); color:var(--gold); font-weight:700; cursor:pointer; }
 button.main:disabled { opacity:.5; }
-button.small { padding:4px 10px; font-size:.82rem; border:1px solid #c8dcd0; background:#fff; border-radius:6px; cursor:pointer; }
+button.small { padding:4px 10px; font-size:.82rem; border:1px solid var(--line); background:#fff; border-radius:6px; cursor:pointer; }
 .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
 table { width:100%; border-collapse:collapse; font-size:.9rem; }
-th { background:#dce8e1; color:#3a5a48; text-align:left; padding:8px; white-space:nowrap; }
-td { padding:8px; border-bottom:1px solid #e8f0ec; vertical-align:top; }
+th { background:var(--line); color:#5a4a32; text-align:left; padding:8px; white-space:nowrap; }
+td { padding:8px; border-bottom:1px solid var(--line); vertical-align:top; }
 .st { display:inline-block; padding:2px 8px; border-radius:12px; font-size:.8rem; font-weight:700; white-space:nowrap; }
 .st-排隊中 { background:#eef2f7; color:#33507a; }
 .st-已通知 { background:#fff4e0; color:var(--orange); }
@@ -32,13 +32,14 @@ td { padding:8px; border-bottom:1px solid #e8f0ec; vertical-align:top; }
 .st-已逾期, .st-已取消 { background:#f2f2f2; color:#666; }
 .msg { padding:12px; border-radius:8px; margin-top:12px; font-size:.95rem; line-height:1.7; display:none; }
 .msg.ok { background:#eefaf2; color:#1a5a30; display:block; }
-.msg.bad { background:#fdecea; color:var(--red); display:block; }
-.msg.info { background:#f5fbf7; color:#1d2b24; display:block; border:1px solid var(--line); }
+.msg.bad { background:var(--red-bg); color:var(--red); display:block; }
+.msg.info { background:var(--bg); color:var(--text); display:block; border:1px solid var(--line); }
 .redeem-box { font-size:1.15rem; line-height:1.9; }
-.redeem-box b { color:var(--green); }
+.redeem-box b { color:var(--text); }
+.redeem-box b.code { color:var(--red); letter-spacing:.05em; }
 #reader { width:100%; max-width:360px; margin-top:12px; }
 .stats { display:flex; gap:20px; flex-wrap:wrap; font-size:.95rem; color:var(--muted); margin-bottom:10px; }
-.stats b { color:var(--green); font-size:1.1rem; }
+.stats b { color:var(--text); font-size:1.1rem; }
 .warn { color:var(--red); font-weight:700; }
 .hidden { display:none; }
 .scroll { overflow-x:auto; }
@@ -46,9 +47,9 @@ td { padding:8px; border-bottom:1px solid #e8f0ec; vertical-align:top; }
 .list-tbl td { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .pboxes { display:flex; gap:10px; flex-wrap:wrap; margin:10px 0; }
 .pbox { flex:1 1 220px; text-align:left; background:#fff; border:2px solid var(--line); border-radius:10px; padding:12px 14px; cursor:pointer; font:inherit; color:inherit; line-height:1.8; }
-.pbox.on { border-color:var(--green); background:#f5fbf7; }
+.pbox.on { border-color:var(--green); background:var(--sel-bg); }
 .pbox .pname { font-size:1.1rem; font-weight:700; color:var(--green); }
-.pbox b { color:var(--green); font-size:1.15rem; }
+.pbox b { color:var(--text); font-size:1.15rem; }
 </style>
 </head>
 <body>
@@ -59,8 +60,8 @@ td { padding:8px; border-bottom:1px solid #e8f0ec; vertical-align:top; }
     <button data-tab="release">到貨通知</button>
     <button data-tab="list">登記名單</button>
   </nav>
-  <span id="who" class="hidden" style="font-size:.85rem;color:rgba(255,226,168,.8)"></span>
-  <button id="logout" class="hidden" onclick="logout()" style="background:none;border:1px solid rgba(255,226,168,.4);color:#ffe2a8;padding:5px 12px;border-radius:6px;font-size:.85rem;cursor:pointer">登出</button>
+  <span id="who" class="hidden" style="font-size:.85rem;color:rgba(255,215,154,.8)"></span>
+  <button id="logout" class="hidden" onclick="logout()" style="background:none;border:1px solid rgba(255,215,154,.4);color:var(--gold);padding:5px 12px;border-radius:6px;font-size:.85rem;cursor:pointer">登出</button>
 </header>
 <main>
   <!-- 登入 -->
@@ -242,7 +243,7 @@ function renderPending() {
     (rows.length ? `<table>
     <thead><tr><th>姓名／店名</th><th>電話</th><th>品項</th><th>取貨碼</th><th>期限</th><th></th></tr></thead>
     <tbody>${rows.map((r) => `<tr>
-      <td><b>${esc(r.name)}</b><br><small style="color:#888">${esc(r.display_name)}</small></td>
+      <td><b>${esc(r.name)}</b><br><small style="color:var(--muted)">${esc(r.display_name)}</small></td>
       <td>${esc(r.phone)}</td><td>${esc(r.product)} 1 桶</td>
       <td style="font-family:monospace;font-size:1.1rem;font-weight:700;letter-spacing:.1em">${esc(r.code)}</td>
       <td style="white-space:nowrap">${esc(fmt(r.deadline).split("）")[0])}）</td>
@@ -271,7 +272,7 @@ async function lookup(codeArg) {
     const { row } = await api({ action: "admin_lookup", code });
     const valid = row.status === "已通知";
     let html = `<div class="redeem-box">
-      取貨碼：<b>${esc(row.code)}</b>　<span class="st st-${esc(row.status)}">${esc(row.status)}</span><br>
+      取貨碼：<b class="code">${esc(row.code)}</b>　<span class="st st-${esc(row.status)}">${esc(row.status)}</span><br>
       姓名／店名：<b>${esc(row.name)}</b><br>
       電話：${esc(row.phone)}<br>
       品項：<b>${esc(row.product)} 1 桶</b><br>
@@ -385,7 +386,7 @@ function waitHtml(queued, released28, limit) {
   const weeks = queued / perWeek;
   const basis = useReal ? `近 4 週實際平均每週 ${perWeek.toFixed(1)} 桶` : `以每週 ${WEEKLY_BASE} 桶估算`;
   const over = weeks > WAIT_LIMIT_WEEKS || queued >= limit;
-  return `<div style="flex-basis:100%;padding:10px 12px;border-radius:8px;${over ? "background:#fdecea;color:var(--red)" : "background:#f5fbf7"}">
+  return `<div style="flex-basis:100%;padding:10px 12px;border-radius:8px;${over ? "background:var(--red-bg);color:var(--red)" : "background:var(--bg)"}">
     合計排隊 <b>${queued}</b>${limit < 9999 ? ` / ${limit}` : ""} 人，預估最後一位約等 <b>${weeks.toFixed(1)}</b> 週（${basis}）
     ${queued >= limit ? `<br>⛔ 已達上限 ${limit} 人，登記頁自動暫停受理；到貨通知後名額釋出會自動重新開放` : ""}
     ${weeks > WAIT_LIMIT_WEEKS && queued < limit ? `<br>⚠️ 預估等待超過 ${WAIT_LIMIT_WEEKS} 週` : ""}
@@ -443,7 +444,7 @@ function renderList() {
   const table = (head, body) => `<table class="list-tbl"><colgroup>
     <col style="width:52px"><col style="width:26%"><col style="width:15%"><col style="width:17%"><col style="width:17%"><col>
     </colgroup><thead><tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`;
-  const nameTd = (r) => `<td>${esc(r.name)}<br><small style="color:#888">${esc(r.display_name)}</small></td>`;
+  const nameTd = (r) => `<td>${esc(r.name)}<br><small style="color:var(--muted)">${esc(r.display_name)}</small></td>`;
   const codeHtml = (r) => `<span style="font-family:monospace;font-weight:700;letter-spacing:.1em">${esc(r.code)}</span>`;
 
   $("list-notified").innerHTML = notified.length ? table(
