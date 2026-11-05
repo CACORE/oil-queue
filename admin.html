@@ -42,6 +42,11 @@ td { padding:8px; border-bottom:1px solid #e8f0ec; vertical-align:top; }
 .warn { color:var(--red); font-weight:700; }
 .hidden { display:none; }
 .scroll { overflow-x:auto; }
+.pboxes { display:flex; gap:10px; flex-wrap:wrap; margin:10px 0; }
+.pbox { flex:1 1 220px; text-align:left; background:#fff; border:2px solid var(--line); border-radius:10px; padding:12px 14px; cursor:pointer; font:inherit; color:inherit; line-height:1.8; }
+.pbox.on { border-color:var(--green); background:#f5fbf7; }
+.pbox .pname { font-size:1.1rem; font-weight:700; color:var(--green); }
+.pbox b { color:var(--green); font-size:1.15rem; }
 </style>
 </head>
 <body>
@@ -127,11 +132,20 @@ td { padding:8px; border-bottom:1px solid #e8f0ec; vertical-align:top; }
         <h2 style="margin:0">登記名單</h2>
         <button class="small" onclick="loadList()">🔄 重新整理</button>
       </div>
-      <div id="list-stats" class="stats" style="margin-top:12px"></div>
-      <div class="scroll" id="list-active"></div>
+      <p style="color:var(--muted);font-size:.85rem;margin:8px 0 0">點品項切換下面的名單</p>
+      <div id="list-stats" class="pboxes"></div>
+      <div id="list-wait"></div>
     </div>
     <div class="card">
-      <h2>最近完成（已取貨／已逾期／已取消，最近 100 筆）</h2>
+      <h2 id="list-notified-title">待取貨</h2>
+      <div class="scroll" id="list-notified"></div>
+    </div>
+    <div class="card">
+      <h2 id="list-queued-title">排隊中</h2>
+      <div class="scroll" id="list-queued"></div>
+    </div>
+    <div class="card">
+      <h2 id="list-done-title">最近完成</h2>
       <div class="scroll" id="list-done"></div>
     </div>
   </section>
@@ -375,39 +389,83 @@ function waitHtml(queued, released28, limit) {
     ${weeks > WAIT_LIMIT_WEEKS && queued < limit ? `<br>⚠️ 預估等待超過 ${WAIT_LIMIT_WEEKS} 週` : ""}
   </div>`;
 }
+// 名單依品項分開看：上面兩格是各品項摘要（點了切換），下面依序是待取貨、排隊中、最近完成
+let listProduct = "沙拉油";
+let listData = null;
+
 async function loadList() {
   try {
-    const { active, done, released28 = {}, limit = 30 } = await api({ action: "admin_list" });
-    activeRows = active;
-    const cnt = (p, s) => active.filter((r) => r.product === p && r.status === s).length;
-    $("list-stats").innerHTML = ["沙拉油", "耐炸油"].map((p) =>
-      `<span>${p}：排隊中 <b>${cnt(p, "排隊中")}</b>　已通知待取貨 <b>${cnt(p, "已通知")}</b>　近 4 週放出 <b>${released28[p] || 0}</b> 桶</span>`).join("") +
-      waitHtml(active.filter((r) => r.status === "排隊中").length, released28, limit);
-    const pos = { 沙拉油: 0, 耐炸油: 0 };
-    $("list-active").innerHTML = active.length ? `<table>
-      <thead><tr><th>順位</th><th>品項</th><th>姓名／店名</th><th>電話</th><th>登記時間</th><th>狀態</th><th></th></tr></thead>
-      <tbody>${active.map((r) => {
-        const n = r.status === "排隊中" ? ++pos[r.product] : "";
-        const extra = r.status === "已通知"
-          ? `<br><small>取貨碼 ${esc(r.code)}｜期限 ${esc(fmt(r.deadline).split("）")[0])}）</small>` +
-            (r.push_ok === false ? `<br><small class="warn">LINE 沒送出，請打電話</small>` : "")
-          : "";
-        const actions = role !== "admin" ? "" :
-          (r.status === "已通知" ? `<button class="small" onclick="resend(${r.id})">重發通知</button> ` : "") +
-          `<button class="small" onclick="cancelRow(${r.id})">取消</button>`;
-        return `<tr><td>${n}</td><td>${esc(r.product)}</td><td>${esc(r.name)}<br><small style="color:#888">${esc(r.display_name)}</small></td>
-          <td>${esc(r.phone)}</td><td>${esc(fmt(r.created_at))}</td>
-          <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span>${extra}</td><td style="white-space:nowrap">${actions}</td></tr>`;
-      }).join("")}</tbody></table>` : `<p style="color:var(--muted)">目前沒有人排隊</p>`;
-    $("list-done").innerHTML = done.length ? `<table>
-      <thead><tr><th>品項</th><th>姓名／店名</th><th>電話</th><th>狀態</th><th>取貨／通知時間</th><th>取貨碼</th></tr></thead>
-      <tbody>${done.map((r) => `<tr><td>${esc(r.product)}</td><td>${esc(r.name)}</td><td>${esc(r.phone)}</td>
-        <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span></td>
-        <td>${esc(fmt(r.redeemed_at || r.notified_at || r.created_at))}</td><td>${esc(r.code)}</td></tr>`).join("")}</tbody></table>`
-      : `<p style="color:var(--muted)">尚無資料</p>`;
+    listData = await api({ action: "admin_list" });
+    activeRows = listData.active;
+    renderList();
   } catch (e) {
-    $("list-active").innerHTML = `<p class="warn">${esc(e.message)}</p>`;
+    $("list-stats").innerHTML = `<p class="warn">${esc(e.message)}</p>`;
   }
+}
+
+function pickProduct(p) {
+  listProduct = p;
+  renderList();
+}
+
+const day = (iso) => fmt(iso).split("）")[0] + "）"; // 11/6（五）
+
+function actionsHtml(r) {
+  if (role !== "admin") return "";
+  return (r.status === "已通知" ? `<button class="small" onclick="resend(${r.id})">重發通知</button> ` : "") +
+    `<button class="small" onclick="cancelRow(${r.id})">取消</button>`;
+}
+
+function renderList() {
+  const { active, done, released28 = {}, limit = 30 } = listData;
+  const of = (p, s) => active.filter((r) => r.product === p && r.status === s);
+
+  $("list-stats").innerHTML = ["沙拉油", "耐炸油"].map((p) => {
+    const notified = of(p, "已通知");
+    const deadlines = [...new Set(notified.map((r) => day(r.deadline)))].join("、");
+    const failed = notified.filter((r) => r.push_ok === false).length;
+    return `<button class="pbox${p === listProduct ? " on" : ""}" onclick="pickProduct('${p}')">
+      <div class="pname">🛢️ ${p}</div>
+      排隊中 <b>${of(p, "排隊中").length}</b> 人<br>
+      待取貨 <b>${notified.length}</b> 人${deadlines ? `（期限 ${deadlines}）` : ""}
+      ${failed ? `<br><span class="warn">其中 ${failed} 位 LINE 沒送出，請打電話</span>` : ""}<br>
+      <span style="color:var(--muted);font-size:.88rem">近 4 週放出 ${released28[p] || 0} 桶</span>
+    </button>`;
+  }).join("");
+  $("list-wait").innerHTML = waitHtml(active.filter((r) => r.status === "排隊中").length, released28, limit);
+
+  const p = listProduct;
+  const notified = of(p, "已通知");
+  $("list-notified-title").textContent = `${p}｜待取貨（${notified.length} 人）`;
+  $("list-notified").innerHTML = notified.length ? `<table>
+    <thead><tr><th>姓名／店名</th><th>電話</th><th>取貨碼</th><th>期限</th><th>通知時間</th><th></th></tr></thead>
+    <tbody>${notified.map((r) => `<tr>
+      <td>${esc(r.name)}<br><small style="color:#888">${esc(r.display_name)}</small></td>
+      <td>${esc(r.phone)}${r.push_ok === false ? `<br><small class="warn">LINE 沒送出，請打電話</small>` : ""}</td>
+      <td style="font-family:monospace;font-weight:700;letter-spacing:.1em">${esc(r.code)}</td>
+      <td style="white-space:nowrap">${esc(day(r.deadline))}</td>
+      <td style="white-space:nowrap">${esc(fmt(r.notified_at))}</td>
+      <td style="white-space:nowrap">${actionsHtml(r)}</td></tr>`).join("")}</tbody></table>`
+    : `<p style="color:var(--muted)">目前沒有待取貨的人</p>`;
+
+  const queued = of(p, "排隊中");
+  $("list-queued-title").textContent = `${p}｜排隊中（${queued.length} 人）`;
+  $("list-queued").innerHTML = queued.length ? `<table>
+    <thead><tr><th>順位</th><th>姓名／店名</th><th>電話</th><th>登記時間</th><th></th></tr></thead>
+    <tbody>${queued.map((r, i) => `<tr><td><b>${i + 1}</b></td>
+      <td>${esc(r.name)}<br><small style="color:#888">${esc(r.display_name)}</small></td>
+      <td>${esc(r.phone)}</td><td style="white-space:nowrap">${esc(fmt(r.created_at))}</td>
+      <td style="white-space:nowrap">${actionsHtml(r)}</td></tr>`).join("")}</tbody></table>`
+    : `<p style="color:var(--muted)">目前沒有人排隊</p>`;
+
+  const doneRows = done.filter((r) => r.product === p);
+  $("list-done-title").textContent = `${p}｜最近完成（已取貨／已逾期／已取消）`;
+  $("list-done").innerHTML = doneRows.length ? `<table>
+    <thead><tr><th>姓名／店名</th><th>電話</th><th>狀態</th><th>取貨／通知時間</th><th>取貨碼</th></tr></thead>
+    <tbody>${doneRows.map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(r.phone)}</td>
+      <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span></td>
+      <td>${esc(fmt(r.redeemed_at || r.notified_at || r.created_at))}</td><td>${esc(r.code)}</td></tr>`).join("")}</tbody></table>`
+    : `<p style="color:var(--muted)">尚無資料</p>`;
 }
 
 async function resend(id) {
