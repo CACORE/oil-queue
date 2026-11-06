@@ -465,12 +465,15 @@ function renderList() {
       <td style="text-align:right">${actionsHtml(r)}</td></tr>`).join(""))
     : `<p style="color:var(--muted)">目前沒有人排隊</p>`;
 
-  const doneRows = done.filter((r) => r.product === p);
+  // 依顯示的時間排，最新的在最上面（後端是照登記順序給的）
+  const doneTime = (r) => r.redeemed_at || r.notified_at || r.created_at;
+  const doneRows = done.filter((r) => r.product === p)
+    .sort((a, b) => new Date(doneTime(b)) - new Date(doneTime(a)));
   $("list-done-title").textContent = `${p}｜最近完成（已取貨／已逾期／已取消）`;
   $("list-done").innerHTML = doneRows.length ? table(
     ["", "姓名／店名", "電話", "取貨／通知時間", "取貨碼", "狀態"],
     doneRows.map((r) => `<tr><td></td>${nameTd(r)}<td>${esc(r.phone)}</td>
-      <td>${esc(fmt(r.redeemed_at || r.notified_at || r.created_at))}</td>
+      <td>${esc(fmt(doneTime(r)))}</td>
       <td>${r.code ? codeHtml(r) : ""}</td>
       <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span></td></tr>`).join(""))
     : `<p style="color:var(--muted)">尚無資料</p>`;
