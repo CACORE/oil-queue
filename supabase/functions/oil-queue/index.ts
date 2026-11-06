@@ -272,7 +272,25 @@ async function adminList() {
   for (const x of rel ?? []) released28[x.product] = (released28[x.product] ?? 0) + 1;
   // 到貨紀錄（每次放量一筆）；表還沒建好就回空的，不影響名單
   const { data: releases } = await db.from("oil_releases").select("*").order("created_at", { ascending: false }).limit(200);
-  return { active: active ?? [], done: done ?? [], released28, limit: QUEUE_LIMIT, releases: releases ?? [] };
+  // 每批的領取狀況：被通知的人歸到「同品項、時間最接近」的那次到貨（各批相隔好幾天，不會混到）
+  const { data: notifiedRows } = await db.from("oil_queue").select("product,status,notified_at")
+    .not("notified_at", "is", null);
+  const batches = (releases ?? []).map((r) => ({ ...r, picked: 0, pending: 0, expired: 0, cancelled: 0 }));
+  for (const x of notifiedRows ?? []) {
+    const t = new Date(x.notified_at).getTime();
+    let best = null, gap = Infinity;
+    for (const r of batches) {
+      if (r.product !== x.product) continue;
+      const g = Math.abs(new Date(r.created_at).getTime() - t);
+      if (g < gap) { gap = g; best = r; }
+    }
+    if (!best) continue;
+    if (x.status === "已取貨") best.picked++;
+    else if (x.status === "已通知") best.pending++;
+    else if (x.status === "已逾期") best.expired++;
+    else if (x.status === "已取消") best.cancelled++;
+  }
+  return { active: active ?? [], done: done ?? [], released28, limit: QUEUE_LIMIT, releases: batches };
 }
 
 async function adminRelease(b: Record<string, any>) {
