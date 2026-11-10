@@ -389,7 +389,8 @@ async function loadReleases() {
         const n = left(r);
         const leftHtml = r.pending ? `<small style="color:var(--muted)">（還在取貨期限內，目前剩 ${n} 桶沒人領）</small>`
           : n > 0 ? `<b class="warn">剩 ${n} 桶沒被領取</b>` : `<b style="color:var(--green)">全部領完</b>`;
-        return `<tr><td style="white-space:nowrap">${esc(fmt(r.created_at))}</td><td>${esc(r.product)}</td>
+        // 補放的整列用橘色字，一眼跟新到貨分開
+        return `<tr${r.reissue ? ` style="color:var(--orange)"` : ""}><td style="white-space:nowrap">${esc(fmt(r.created_at))}</td><td>${esc(r.product)}</td>
           <td><b>${r.notified}</b> 桶</td><td>${parts.join("、")}<br>${leftHtml}</td><td>${notes.join("<br>")}</td></tr>`;
       }).join("")}</tbody></table>` : `<p style="color:var(--muted)">還沒有到貨紀錄</p>`;
   } catch (e) {
