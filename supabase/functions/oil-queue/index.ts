@@ -168,12 +168,18 @@ async function me(userId: string): Promise<Record<string, unknown>> {
   return out;
 }
 
+async function recentReleased(): Promise<Record<string, number>> {
+  // 近 4 週各品項新到貨放出幾桶（依到貨紀錄；補放上批沒領走的油不算，不然同一桶油會算兩次）
+  const { data } = await db.from("oil_releases").select("product,notified")
+    .eq("reissue", false).gte("created_at", new Date(Date.now() - 28 * 86400000).toISOString());
+  const cnt: Record<string, number> = Object.fromEntries(PRODUCTS.map((p) => [p, 0]));
+  for (const x of data ?? []) cnt[x.product] = (cnt[x.product] ?? 0) + x.notified;
+  return cnt;
+}
+
 async function weeklyRates(): Promise<Record<string, number>> {
   // 各品項每週放出幾桶：近 4 週累計放出夠多就用實際平均，不然用基準值（每週合計約 10 桶，各抓一半）
-  const { data } = await db.from("oil_queue").select("product")
-    .gte("notified_at", new Date(Date.now() - 28 * 86400000).toISOString());
-  const cnt: Record<string, number> = Object.fromEntries(PRODUCTS.map((p) => [p, 0]));
-  for (const x of data ?? []) cnt[x.product] = (cnt[x.product] ?? 0) + 1;
+  const cnt = await recentReleased();
   const real = Object.values(cnt).reduce((a, b) => a + b, 0) >= HISTORY_MIN;
   return Object.fromEntries(PRODUCTS.map((p) => [p, real ? cnt[p] / 4 : WEEKLY_BASE_EACH]));
 }
@@ -265,11 +271,8 @@ async function adminList() {
     .in("status", ["排隊中", "已通知"]).order("id");
   const { data: done } = await db.from("oil_queue").select("*")
     .in("status", ["已取貨", "已逾期", "已取消"]).order("id", { ascending: false }).limit(100);
-  // 最近 4 週各品項放出（通知）幾桶，後台估算等待週數用
-  const { data: rel } = await db.from("oil_queue").select("product")
-    .gte("notified_at", new Date(Date.now() - 28 * 86400000).toISOString());
-  const released28: Record<string, number> = Object.fromEntries(PRODUCTS.map((p) => [p, 0]));
-  for (const x of rel ?? []) released28[x.product] = (released28[x.product] ?? 0) + 1;
+  // 最近 4 週各品項新到貨放出幾桶，後台估算等待週數用
+  const released28 = await recentReleased();
   // 到貨紀錄（每次放量一筆）；表還沒建好就回空的，不影響名單
   const { data: releases } = await db.from("oil_releases").select("*").order("created_at", { ascending: false }).limit(200);
   // 每批的領取狀況：被通知的人歸到「同品項、時間最接近」的那次到貨（各批相隔好幾天，不會混到）
@@ -296,6 +299,7 @@ async function adminList() {
 async function adminRelease(b: Record<string, any>) {
   const product = String(b.product ?? "");
   const qty = Math.floor(Number(b.qty));
+  const reissue = b.reissue === true; // 補放上批沒領走的油
   if (!PRODUCTS.includes(product)) throw new UserError("請選擇品項");
   if (!(qty >= 1 && qty <= 200)) throw new UserError("請輸入放出桶數（1～200）");
   const { data: rows } = await db.from("oil_queue").select("*")
@@ -321,7 +325,7 @@ async function adminRelease(b: Record<string, any>) {
   }
   // 記一筆到貨紀錄：什麼時候、哪種油、放出幾桶、實際通知幾位（記錄失敗不影響通知）
   const { error: logErr } = await db.from("oil_releases").insert({
-    product, qty, notified: results.length, push_failed: results.filter((r) => !r.push_ok).length,
+    product, qty, reissue, notified: results.length, push_failed: results.filter((r) => !r.push_ok).length,
   });
   if (logErr) console.error("到貨紀錄寫入失敗", logErr);
   return { released: results, short: qty - results.length };

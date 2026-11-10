@@ -35,6 +35,8 @@ create table if not exists oil_releases (
   notified    int not null,            -- 實際通知幾位（排隊人數不夠時會比 qty 少）
   push_failed int not null default 0,  -- LINE 沒送出、要打電話的人數
   note        text,
+  reissue     boolean not null default false, -- 補放上批沒領走的油（不是新到貨，不算進近 4 週放出）
   created_at  timestamptz not null default now()
 );
 alter table oil_releases enable row level security;
+alter table oil_releases add column if not exists reissue boolean not null default false;
