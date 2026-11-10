@@ -168,20 +168,26 @@ async function me(userId: string): Promise<Record<string, unknown>> {
   return out;
 }
 
-async function recentReleased(): Promise<Record<string, number>> {
+async function recentReleased(): Promise<{ cnt: Record<string, number>; weeks: number }> {
   // 近 4 週各品項新到貨放出幾桶（依到貨紀錄；補放上批沒領走的油不算，不然同一桶油會算兩次）
-  const { data } = await db.from("oil_releases").select("product,notified")
-    .eq("reissue", false).gte("created_at", new Date(Date.now() - 28 * 86400000).toISOString());
+  // weeks＝實際經過幾週：從第一次新到貨算到現在，最少 1 週、最多 4 週（剛開始放量時不能硬除以 4）
+  const { data } = await db.from("oil_releases").select("product,notified,created_at")
+    .eq("reissue", false).order("created_at");
+  const since = Date.now() - 28 * 86400000;
   const cnt: Record<string, number> = Object.fromEntries(PRODUCTS.map((p) => [p, 0]));
-  for (const x of data ?? []) cnt[x.product] = (cnt[x.product] ?? 0) + x.notified;
-  return cnt;
+  for (const x of data ?? []) {
+    if (new Date(x.created_at).getTime() >= since) cnt[x.product] = (cnt[x.product] ?? 0) + x.notified;
+  }
+  const first = data?.length ? new Date(data[0].created_at).getTime() : Date.now();
+  const weeks = Math.min(4, Math.max(1, (Date.now() - first) / (7 * 86400000)));
+  return { cnt, weeks };
 }
 
 async function weeklyRates(): Promise<Record<string, number>> {
   // 各品項每週放出幾桶：近 4 週累計放出夠多就用實際平均，不然用基準值（每週合計約 10 桶，各抓一半）
-  const cnt = await recentReleased();
+  const { cnt, weeks } = await recentReleased();
   const real = Object.values(cnt).reduce((a, b) => a + b, 0) >= HISTORY_MIN;
-  return Object.fromEntries(PRODUCTS.map((p) => [p, real ? cnt[p] / 4 : WEEKLY_BASE_EACH]));
+  return Object.fromEntries(PRODUCTS.map((p) => [p, real ? cnt[p] / weeks : WEEKLY_BASE_EACH]));
 }
 
 function waitText(n: number, perWeek: number): string {
@@ -272,7 +278,7 @@ async function adminList() {
   const { data: done } = await db.from("oil_queue").select("*")
     .in("status", ["已取貨", "已逾期", "已取消"]).order("id", { ascending: false }).limit(100);
   // 最近 4 週各品項新到貨放出幾桶，後台估算等待週數用
-  const released28 = await recentReleased();
+  const { cnt: released28, weeks: releasedWeeks } = await recentReleased();
   // 到貨紀錄（每次放量一筆）；表還沒建好就回空的，不影響名單
   const { data: releases } = await db.from("oil_releases").select("*").order("created_at", { ascending: false }).limit(200);
   // 每批的領取狀況：被通知的人歸到「同品項、時間最接近」的那次到貨（各批相隔好幾天，不會混到）
@@ -293,7 +299,7 @@ async function adminList() {
     else if (x.status === "已逾期") best.expired++;
     else if (x.status === "已取消") best.cancelled++;
   }
-  return { active: active ?? [], done: done ?? [], released28, limit: QUEUE_LIMIT, releases: batches };
+  return { active: active ?? [], done: done ?? [], released28, releasedWeeks, limit: QUEUE_LIMIT, releases: batches };
 }
 
 async function adminRelease(b: Record<string, any>) {

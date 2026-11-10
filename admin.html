@@ -402,12 +402,13 @@ const WEEKLY_BASE = 10;      // 還沒累積資料時，假設每週放出幾桶
 const WAIT_LIMIT_WEEKS = 3;  // 預估等待超過幾週就提醒暫停受理
 const HISTORY_MIN = 20;      // 近 4 週放出至少幾桶，才改用實際數字（資料太少不準）
 
-function waitHtml(queued, released28, limit) {
+function waitHtml(queued, released28, limit, releasedWeeks = 4) {
+  // releasedWeeks＝實際經過幾週（第一次新到貨到現在，1～4 週），後端還沒更新時照舊除以 4
   const recent = Object.values(released28).reduce((a, b) => a + b, 0);
   const useReal = recent >= HISTORY_MIN;
-  const perWeek = useReal ? recent / 4 : WEEKLY_BASE;
+  const perWeek = useReal ? recent / releasedWeeks : WEEKLY_BASE;
   const weeks = queued / perWeek;
-  const basis = useReal ? `近 4 週實際平均每週 ${perWeek.toFixed(1)} 桶` : `以每週 ${WEEKLY_BASE} 桶估算`;
+  const basis = useReal ? `近 ${releasedWeeks.toFixed(1)} 週實際平均每週 ${perWeek.toFixed(1)} 桶` : `以每週 ${WEEKLY_BASE} 桶估算`;
   const over = weeks > WAIT_LIMIT_WEEKS || queued >= limit;
   return `<div style="flex-basis:100%;padding:10px 12px;border-radius:8px;${over ? "background:var(--red-bg);color:var(--red)" : "background:var(--bg)"}">
     合計排隊 <b>${queued}</b>${limit < 9999 ? ` / ${limit}` : ""} 人，預估最後一位約等 <b>${weeks.toFixed(1)}</b> 週（${basis}）
@@ -443,7 +444,7 @@ function actionsHtml(r) {
 }
 
 function renderList() {
-  const { active, done, released28 = {}, limit = 30 } = listData;
+  const { active, done, released28 = {}, releasedWeeks, limit = 30 } = listData;
   const of = (p, s) => active.filter((r) => r.product === p && r.status === s);
 
   $("list-stats").innerHTML = ["沙拉油", "耐炸油"].map((p) => {
@@ -458,7 +459,7 @@ function renderList() {
       <span style="color:var(--muted);font-size:.88rem">近 4 週新到貨放出 ${released28[p] || 0} 桶</span>
     </div>`;
   }).join("");
-  $("list-wait").innerHTML = waitHtml(active.filter((r) => r.status === "排隊中").length, released28, limit);
+  $("list-wait").innerHTML = waitHtml(active.filter((r) => r.status === "排隊中").length, released28, limit, releasedWeeks);
 
   const p = listProduct;
   const notified = of(p, "已通知");
