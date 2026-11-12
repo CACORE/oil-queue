@@ -106,6 +106,11 @@ td { padding:8px; border-bottom:1px solid var(--line); vertical-align:top; }
   <!-- 到貨通知 -->
   <section id="tab-release" class="hidden">
     <div class="card">
+      <h2>店裡還可以發幾桶</h2>
+      <div id="rel-stock" class="pboxes"></div>
+      <p style="color:var(--muted);font-size:.85rem;margin:6px 0 0">＝新到貨總桶數 − 已領走 − 待取貨（客人還在期限內）。逾期、取消的油都算回店裡，可以直接補放。</p>
+    </div>
+    <div class="card">
       <h2>到貨放量：依登記順序通知</h2>
       <div class="row">
         <select id="rel-product">
@@ -126,7 +131,6 @@ td { padding:8px; border-bottom:1px solid var(--line); vertical-align:top; }
         <h2 style="margin:0">到貨紀錄</h2>
         <button class="small" onclick="loadReleases()">🔄 重新整理</button>
       </div>
-      <div id="rel-stats" class="stats" style="margin-top:12px"></div>
       <div class="scroll" id="rel-history"></div>
     </div>
   </section>
@@ -360,18 +364,25 @@ async function release() {
 async function loadReleases() {
   try {
     const { releases = [] } = await api({ action: "admin_list" });
-    // 每批剩幾桶沒領＝輸入桶數 − 已取貨 − 待取貨（逾期、取消、排隊不夠通知不到的，油都還在店裡）
-    const left = (r) => r.qty - (r.picked || 0) - (r.pending || 0);
-    // 累計只算新到貨；補放的是之前沒被領走的同一批油，另外列
-    const total = { 沙拉油: 0, 耐炸油: 0 };
-    let reissued = 0;
+    // 店裡還可以發幾桶（各品項）＝新到貨輸入桶數合計 − 已取貨 − 待取貨
+    // 補放的是之前沒被領走的同一批油，不算新到貨；每位被通知的人都歸在某一批，所以全部批次加總＝該品項全部
+    const stock = {};
+    for (const p of ["沙拉油", "耐炸油"]) stock[p] = { arrived: 0, picked: 0, pending: 0 };
     for (const r of releases) {
-      if (r.reissue) reissued += r.notified;
-      else total[r.product] = (total[r.product] || 0) + r.notified;
+      const s = stock[r.product];
+      if (!s) continue;
+      if (!r.reissue) s.arrived += r.qty;
+      s.picked += r.picked || 0;
+      s.pending += r.pending || 0;
     }
-    $("rel-stats").innerHTML = ["沙拉油", "耐炸油"].map((p) => `<span>${p}：累計新到貨放出 <b>${total[p]}</b> 桶</span>`).join("") +
-      `<span>合計 <b>${total.沙拉油 + total.耐炸油}</b> 桶</span>` +
-      (reissued ? `<span>另補放沒被領走的油 <b>${reissued}</b> 桶</span>` : "");
+    $("rel-stock").innerHTML = Object.entries(stock).map(([p, s]) => {
+      const can = s.arrived - s.picked - s.pending;
+      return `<div class="pbox" style="cursor:default">
+        <div class="pname">🛢️ ${p}</div>
+        可以再發 <b style="font-size:1.6rem;color:${can > 0 ? "var(--red)" : "var(--text)"}">${can}</b> 桶<br>
+        <span style="color:var(--muted);font-size:.88rem">新到貨共 ${s.arrived} 桶｜已領走 ${s.picked}｜待取貨 ${s.pending}</span>
+      </div>`;
+    }).join("");
     $("rel-history").innerHTML = releases.length ? `<table>
       <thead><tr><th>日期時間</th><th>品項</th><th>通知桶數</th><th>領取狀況</th><th>備註</th></tr></thead>
       <tbody>${releases.map((r) => {
@@ -386,12 +397,10 @@ async function loadReleases() {
         if (r.pending) parts.push(`待取貨 ${r.pending}`);
         if (r.expired) parts.push(`逾期 ${r.expired}`);
         if (r.cancelled) parts.push(`取消 ${r.cancelled}`);
-        const n = left(r);
-        const leftHtml = r.pending ? `<small style="color:var(--muted)">（還在取貨期限內，目前剩 ${n} 桶沒人領）</small>`
-          : n > 0 ? `<b class="warn">剩 ${n} 桶沒被領取</b>` : `<b style="color:var(--green)">全部領完</b>`;
+        // 每批只列這批通知的人領了沒；剩幾桶看上面「店裡還可以發幾桶」（補放會讓每批的剩餘重複算）
         // 補放的整列用橘色字，一眼跟新到貨分開
         return `<tr${r.reissue ? ` style="color:var(--orange)"` : ""}><td style="white-space:nowrap">${esc(fmt(r.created_at))}</td><td>${esc(r.product)}</td>
-          <td><b>${r.notified}</b> 桶</td><td>${parts.join("、")}<br>${leftHtml}</td><td>${notes.join("<br>")}</td></tr>`;
+          <td><b>${r.notified}</b> 桶</td><td>${parts.join("、")}</td><td>${notes.join("<br>")}</td></tr>`;
       }).join("")}</tbody></table>` : `<p style="color:var(--muted)">還沒有到貨紀錄</p>`;
   } catch (e) {
     $("rel-history").innerHTML = `<p class="warn">${esc(e.message)}</p>`;
