@@ -449,7 +449,8 @@ const day = (iso) => fmt(iso).split("）")[0] + "）"; // 11/6（五）
 
 function actionsHtml(r) {
   if (role !== "admin") return "";
-  return (r.status === "已通知" ? `<button class="small" onclick="resend(${r.id})">重發通知</button> ` : "") +
+  return (r.status === "已通知" ? `<button class="small" onclick="resend(${r.id})">重發通知</button> ` +
+    `<button class="small" onclick="extendRow(${r.id})">延後取貨</button> ` : "") +
     `<button class="small" onclick="cancelRow(${r.id})">取消</button>`;
 }
 
@@ -517,6 +518,19 @@ async function resend(id) {
   try {
     const { push_ok } = await api({ action: "admin_resend", id });
     alert(push_ok ? "已重新傳送 LINE 通知" : "LINE 仍然送不出去，請改打電話通知");
+    loadList();
+  } catch (e) { alert(e.message); }
+}
+
+async function extendRow(id) {
+  const r = activeRows.find((x) => x.id === id) || {};
+  const date = prompt(`店裡暫時沒貨，要把「${r.name}」的取貨期限延到哪一天？（月/日，例如 11/20）
+會用 LINE 告訴客人新期限，取貨碼不變。`);
+  if (!date) return;
+  try {
+    const { push_ok, deadline_text } = await api({ action: "admin_extend", id, date });
+    alert(`期限已延到 ${deadline_text}
+` + (push_ok ? "已用 LINE 通知客人" : "LINE 送不出去，請改打電話通知"));
     loadList();
   } catch (e) { alert(e.message); }
 }
