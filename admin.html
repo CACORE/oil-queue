@@ -50,6 +50,8 @@ td { padding:8px; border-bottom:1px solid var(--line); vertical-align:top; }
 .pbox.on { border-color:var(--green); background:var(--sel-bg); }
 .pbox .pname { font-size:1.1rem; font-weight:700; color:var(--green); }
 .pbox b { color:var(--text); font-size:1.15rem; }
+#msg-dlg { border:1px solid var(--line); border-radius:10px; padding:16px; width:min(520px, calc(100vw - 32px)); }
+#msg-text { width:100%; box-sizing:border-box; height:260px; font:inherit; font-size:.95rem; padding:8px; border:1px solid var(--line); border-radius:6px; }
 </style>
 </head>
 <body>
@@ -450,7 +452,7 @@ const day = (iso) => fmt(iso).split("）")[0] + "）"; // 11/6（五）
 function actionsHtml(r) {
   if (role !== "admin") return "";
   return (r.status === "已通知" ? `<button class="small" onclick="resend(${r.id})">重發通知</button> ` +
-    `<button class="small" onclick="extendRow(${r.id})">延後取貨</button> ` : "") +
+    `<button class="small" onclick="openMsg(${r.id})">傳 LINE 訊息</button> ` : "") +
     `<button class="small" onclick="cancelRow(${r.id})">取消</button>`;
 }
 
@@ -522,17 +524,30 @@ async function resend(id) {
   } catch (e) { alert(e.message); }
 }
 
-async function extendRow(id) {
+// 傳 LINE 訊息：先放好範本（姓名、品項、取貨碼、期限），看過或修改後送出
+let msgId = 0;
+function openMsg(id) {
   const r = activeRows.find((x) => x.id === id) || {};
-  const date = prompt(`店裡暫時沒貨，要把「${r.name}」的取貨期限延到哪一天？（月/日，例如 11/20）
-會用 LINE 告訴客人新期限，取貨碼不變。`);
-  if (!date) return;
+  msgId = id;
+  $("msg-to").textContent = `傳給：${r.name}（${r.phone}）`;
+  $("msg-text").value = `【惠通行】${r.name} 您好，很抱歉，門市的${r.product}今天暫時出完了，正在等下一批到貨🙏\n\n` +
+    `請於 ${day(r.deadline)}營業結束前來門市取貨，取貨期限已幫您延長，不會算逾期。\n` +
+    `取貨碼不變：${r.code}\n\n` +
+    `⚠️ 限登記本人取貨，請本人用手機出示，不接受截圖領取。\n` +
+    `📍 台北市大同區迪化街一段175號\n🈺 週一至週五 08:00–18:00｜週六 08:30–14:00`;
+  $("msg-dlg").showModal();
+}
+
+async function sendMsg() {
+  const text = $("msg-text").value.trim();
+  if (!text) return alert("訊息內容不能空白");
+  $("msg-send").disabled = true;
   try {
-    const { push_ok, deadline_text } = await api({ action: "admin_extend", id, date });
-    alert(`期限已延到 ${deadline_text}
-` + (push_ok ? "已用 LINE 通知客人" : "LINE 送不出去，請改打電話通知"));
-    loadList();
+    const { push_ok } = await api({ action: "admin_message", id: msgId, text });
+    $("msg-dlg").close();
+    alert(push_ok ? "已用 LINE 傳給客人" : "LINE 送不出去（客人可能封鎖了），請改打電話");
   } catch (e) { alert(e.message); }
+  $("msg-send").disabled = false;
 }
 
 async function cancelRow(id) {
@@ -547,5 +562,12 @@ async function cancelRow(id) {
 // 記住的密碼自動登入
 try { const s = localStorage.getItem("oil_pw"); if (s) login(s); } catch (e) { /* 忽略 */ }
 </script>
+<dialog id="msg-dlg">
+  <div id="msg-to" style="font-weight:700;margin-bottom:8px"></div>
+  <textarea id="msg-text"></textarea>
+  <div style="color:var(--muted);font-size:.85rem;margin:6px 0 10px">可以直接修改內容，按「送出」會用官方 LINE 傳給這位客人。</div>
+  <div style="text-align:right"><button class="small" onclick="$('msg-dlg').close()">取消</button>
+    <button class="small" id="msg-send" onclick="sendMsg()" style="background:var(--green);color:#fff;border-color:var(--green)">送出</button></div>
+</dialog>
 </body>
 </html>

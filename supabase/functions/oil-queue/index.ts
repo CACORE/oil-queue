@@ -371,37 +371,15 @@ async function adminResend(b: Record<string, any>) {
   return { push_ok: ok };
 }
 
-async function adminExtend(b: Record<string, any>) {
-  // 店裡臨時沒貨：把期限延到指定日期（台灣時間 23:59:59），並用 LINE 告訴客人
-  const m = String(b.date ?? "").trim().match(/^(\d{1,2})[\/\-.](\d{1,2})$/);
-  if (!m) throw new UserError("日期格式請輸入 月/日，例如 11/20");
-  const now = new Date(Date.now() + TW);
-  let y = now.getUTCFullYear();
-  if (Number(m[1]) < now.getUTCMonth() + 1 - 6) y++; // 12 月輸入 1/3 算明年
-  const deadline = new Date(Date.UTC(y, Number(m[1]) - 1, Number(m[2]), 23, 59, 59) - TW);
-  if (isNaN(deadline.getTime()) || deadline <= new Date()) throw new UserError("新期限要是今天或之後的日期");
-  const { data: row } = await db.from("oil_queue").update({ deadline: deadline.toISOString() })
-    .eq("id", Number(b.id)).eq("status", "已通知").select().maybeSingle();
-  if (!row) throw new UserError("只有「已通知」的登記可以延後取貨");
-  const text = `【惠通行】${row.name} 您好，很抱歉，門市的「${row.product}」目前暫時出完，正在等下一批到貨🙏
-
-` +
-    `您的取貨期限已延長至 ${twDate(deadline)} 營業結束前，不會算逾期。
-` +
-    `取貨碼不變：${row.code}
-` +
-    `請先不用急著過來，延長期間內再來門市取貨即可。
-` +
-    `⚠️ 限登記本人取貨，請本人用手機出示，不接受截圖領取。
-` +
-    `👉 ${LIFF_URL}
-` +
-    `
-📍 台北市大同區迪化街一段175號
-🈺 週一至週五 08:00–18:00｜週六 08:30–14:00`;
+async function adminMessage(b: Record<string, any>) {
+  // 後台自己打的訊息直接傳給這位客人（例如店裡臨時沒貨，告訴他何時再來）
+  const text = String(b.text ?? "").trim();
+  if (!text) throw new UserError("訊息內容不能空白");
+  if (text.length > 4000) throw new UserError("訊息太長，請縮短到 4000 字以內");
+  const { data: row } = await db.from("oil_queue").select("*").eq("id", Number(b.id)).maybeSingle();
+  if (!row || !["排隊中", "已通知"].includes(row.status)) throw new UserError("只有排隊中或待取貨的登記可以傳訊息");
   const ok = await pushText(row.user_id, text, row.id);
-  await db.from("oil_queue").update({ push_ok: ok }).eq("id", row.id);
-  return { push_ok: ok, deadline_text: twDate(deadline) };
+  return { push_ok: ok };
 }
 
 // ── 入口 ──────────────────────────────────────────
@@ -424,7 +402,7 @@ Deno.serve(async (req) => {
         case "admin_redeem": return json(await adminRedeem(b));
         case "admin_cancel": return json(await adminCancel(b));
         case "admin_resend": return json(await adminResend(b));
-        case "admin_extend": return json(await adminExtend(b));
+        case "admin_message": return json(await adminMessage(b));
       }
       return json({ error: "未知的動作" }, 400);
     }
