@@ -3,6 +3,7 @@
 // 門市：後台帶密碼呼叫 admin_*（名單、放量通知、查取貨碼、兌換、取消、重發通知）；員工密碼只能兌換、看名單
 // Secrets：OIL_LIFF_ID（LIFF ID，前半段就是 LINE Login 頻道 ID）、OIL_ADMIN_PASSWORD（管理者密碼）、
 //          OIL_STAFF_PASSWORD（員工密碼）、OIL_QUEUE_LIMIT（排隊上限，選填，預設 30）、
+//          OIL_HOLIDAYS（公休日，選填，例 2026-11-28,2027-01-01，算取貨期限時跳過）、
 //          LINE_CHANNEL_ACCESS_TOKEN（叫貨官方帳號，line-webhook 已設好，同專案共用）
 // 部署時關閉 JWT 驗證（LIFF 頁面不會帶 Supabase 金鑰，身分改用 LINE idToken／後台密碼驗證）
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -17,11 +18,12 @@ const STAFF_ACTIONS = ["admin_login", "admin_list", "admin_lookup", "admin_redee
 const LINE_TOKEN = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN") ?? "";
 
 const PRODUCTS = ["沙拉油", "耐炸油"];
-const PICKUP_DAYS = 2;   // 通知後幾個營業日內取貨（週日不算）
+const PICKUP_DAYS = 2;   // 通知後幾個營業日內取貨（週日、公休日不算）
 const COOLDOWN_DAYS = 10; // 取貨後幾天內不能再登記
 const NOSHOW_LIMIT = 2;   // 累計逾期未取幾次就暫停登記
 const SUSPEND_DAYS = 30;  // 暫停幾天（從最後一次逾期的期限起算）
 const QUEUE_LIMIT = Number(Deno.env.get("OIL_QUEUE_LIMIT")) || 30; // 兩種油合計排隊上限（Secrets 可調，不用重新部署）
+const HOLIDAYS = (Deno.env.get("OIL_HOLIDAYS") ?? "").split(/[,，\s]+/).filter(Boolean); // 公休日 YYYY-MM-DD（Secrets 可調，不用重新部署）
 const WEEKLY_BASE_EACH = 5; // 還沒累積資料時，假設各品項每週放出幾桶（合計約 10 桶）
 const HISTORY_MIN = 20;     // 近 4 週合計放出至少幾桶，才改用實際數字估等待時間
 const FULL_TEXT = "目前登記已額滿，暫停受理。到貨通知後會陸續釋出名額，請過幾天再試。";
@@ -44,12 +46,12 @@ class UserError extends Error {}
 const TW = 8 * 3600 * 1000;
 
 function deadlineFrom(now: Date): Date {
-  // 通知當天不算，往後數 PICKUP_DAYS 個營業日（跳過週日），期限是那天台灣時間 23:59:59
+  // 通知當天不算，往後數 PICKUP_DAYS 個營業日（跳過週日、公休日），期限是那天台灣時間 23:59:59
   const d = new Date(now.getTime() + TW);
   let n = 0;
   while (n < PICKUP_DAYS) {
     d.setUTCDate(d.getUTCDate() + 1);
-    if (d.getUTCDay() !== 0) n++;
+    if (d.getUTCDay() !== 0 && !HOLIDAYS.includes(d.toISOString().slice(0, 10))) n++;
   }
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59) - TW);
 }
